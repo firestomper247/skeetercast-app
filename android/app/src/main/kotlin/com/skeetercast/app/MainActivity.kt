@@ -1,4 +1,4 @@
-package com.example.skeetercast_app
+package com.skeetercast.app
 
 import io.flutter.embedding.android.FlutterActivity
 

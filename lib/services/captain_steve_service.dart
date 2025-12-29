@@ -1,44 +1,99 @@
 import 'api_service.dart';
 import 'api_config.dart';
 
-/// Captain Steve AI Chat service
-/// Handles chat with Captain Steve AI assistant
+/// Captain Steve AI service
+/// Handles chat, recommendations, and fishing picks
 
 class CaptainSteveService {
   final ApiService _api = ApiService();
-  
-  /// URL to Captain Steve chat interface
-  static const String chatUrl = 'https://skeetercast.com/captain-steve';
-  
-  /// Send a message to Captain Steve and get response
-  Future<String?> sendMessage(String message, {String? location}) async {
+
+  /// URL to Captain Steve chat page (web)
+  static String get chatPageUrl => ApiConfig.captainSteveChat;
+
+  /// Get fishing recommendations for all zones
+  Future<Map<String, dynamic>?> getRecommendations() async {
     try {
-      final response = await _api.post(
-        '${ApiConfig.aiBase}/api/chat',
-        data: {
-          'message': message,
-          if (location != null) 'location': location,
-        },
-      );
+      final response = await _api.get(ApiConfig.steveRecommendations);
       if (response.statusCode == 200) {
-        return response.data['response'];
+        return response.data;
       }
     } catch (e) {
       // Return null on error
     }
     return null;
   }
-  
-  /// Get conversation history
-  Future<List<Map<String, dynamic>>> getHistory() async {
+
+  /// Get species scores (all 19 species)
+  Future<Map<String, dynamic>?> getSpeciesScores() async {
     try {
-      final response = await _api.get('${ApiConfig.aiBase}/api/history');
-      if (response.statusCode == 200 && response.data is List) {
-        return List<Map<String, dynamic>>.from(response.data);
+      final response = await _api.get(ApiConfig.steveSpeciesScores);
+      if (response.statusCode == 200) {
+        return response.data;
       }
     } catch (e) {
-      // Return empty on error
+      // Return null on error
     }
-    return [];
+    return null;
+  }
+
+  /// Chat with Captain Steve (requires auth)
+  Future<Map<String, dynamic>?> chat(String question, {List<Map<String, String>>? history}) async {
+    try {
+      final response = await _api.post(
+        ApiConfig.steveChat,
+        data: {
+          'question': question,
+          if (history != null) 'conversation_history': history,
+        },
+      );
+      if (response.statusCode == 200) {
+        return response.data;
+      }
+    } catch (e) {
+      // Return null on error
+    }
+    return null;
+  }
+
+  /// Get strike times (solunar calendar)
+  Future<Map<String, dynamic>?> getStrikeTimes() async {
+    try {
+      final response = await _api.get(ApiConfig.steveStrikeTimes);
+      if (response.statusCode == 200) {
+        return response.data;
+      }
+    } catch (e) {
+      // Return null on error
+    }
+    return null;
+  }
+
+  /// Get data quality report
+  Future<Map<String, dynamic>?> getDataQuality() async {
+    try {
+      final response = await _api.get(ApiConfig.steveDataQuality);
+      if (response.statusCode == 200) {
+        return response.data;
+      }
+    } catch (e) {
+      // Return null on error
+    }
+    return null;
+  }
+
+  /// Get city weather forecast summary
+  Future<Map<String, dynamic>?> getCityForecast(String city) async {
+    try {
+      final response = await _api.post(
+        ApiConfig.steveCityForecast,
+        data: {'city': city},
+      );
+      if (response.statusCode == 200) {
+        return response.data;
+      }
+    } catch (e) {
+      // Return null on error
+    }
+    return null;
   }
 }

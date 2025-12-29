@@ -1,28 +1,76 @@
 import 'api_service.dart';
 import 'api_config.dart';
 
-/// Radar service for weather maps and alerts
+/// Radar service for weather maps, satellite, and alerts
 
 class RadarService {
   final ApiService _api = ApiService();
-  
-  /// Base URL for radar tiles
-  String get radarTileUrl => '${ApiConfig.radarTiles}/{z}/{x}/{y}.png';
-  
-  /// Fetch weather alerts
-  Future<List<Map<String, dynamic>>> getAlerts({double? lat, double? lon}) async {
+
+  /// Health check
+  Future<Map<String, dynamic>?> checkHealth() async {
     try {
-      final params = <String, dynamic>{};
-      if (lat != null) params['lat'] = lat;
-      if (lon != null) params['lon'] = lon;
-      
-      final response = await _api.get(ApiConfig.alerts, params: params);
-      if (response.statusCode == 200 && response.data is List) {
-        return List<Map<String, dynamic>>.from(response.data);
+      final response = await _api.get(ApiConfig.radarHealth);
+      if (response.statusCode == 200) {
+        return response.data;
       }
     } catch (e) {
-      // Return empty on error
+      // Return null on error
     }
-    return [];
+    return null;
+  }
+
+  /// Get radar frames for a region and product
+  /// region: southeast, northeast, etc.
+  /// product: reflectivity, velocity, etc.
+  Future<Map<String, dynamic>?> getRadarFrames(String region, String product) async {
+    try {
+      final response = await _api.get('${ApiConfig.radarFrames}/$region/$product');
+      if (response.statusCode == 200) {
+        return response.data;
+      }
+    } catch (e) {
+      // Return null on error
+    }
+    return null;
+  }
+
+  /// Get latest satellite imagery
+  /// product: visible, infrared, water_vapor
+  Future<Map<String, dynamic>?> getSatelliteLatest(String product) async {
+    try {
+      final response = await _api.get('${ApiConfig.satelliteLatest}/$product/latest');
+      if (response.statusCode == 200) {
+        return response.data;
+      }
+    } catch (e) {
+      // Return null on error
+    }
+    return null;
+  }
+
+  /// Get lightning strikes in the last N minutes
+  Future<Map<String, dynamic>?> getLightning(int minutes) async {
+    try {
+      final response = await _api.get('${ApiConfig.lightning}/$minutes');
+      if (response.statusCode == 200) {
+        return response.data;
+      }
+    } catch (e) {
+      // Return null on error
+    }
+    return null;
+  }
+
+  /// Get active NWS warnings
+  Future<Map<String, dynamic>?> getActiveWarnings() async {
+    try {
+      final response = await _api.get(ApiConfig.warnings);
+      if (response.statusCode == 200) {
+        return response.data;
+      }
+    } catch (e) {
+      // Return null on error
+    }
+    return null;
   }
 }

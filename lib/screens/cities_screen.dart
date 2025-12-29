@@ -10,31 +10,30 @@ class CitiesScreen extends StatefulWidget {
 
 class _CitiesScreenState extends State<CitiesScreen> {
   final ForecastService _forecastService = ForecastService();
-  List<Map<String, dynamic>> _cities = [];
-  bool _isLoading = true;
+  final TextEditingController _searchController = TextEditingController();
+  Map<String, dynamic>? _forecast;
+  bool _isLoading = false;
   String? _error;
+  String? _currentCity;
 
-  @override
-  void initState() {
-    super.initState();
-    _loadCities();
-  }
+  Future<void> _searchCity(String city) async {
+    if (city.isEmpty) return;
 
-  Future<void> _loadCities() async {
     setState(() {
       _isLoading = true;
       _error = null;
+      _currentCity = city;
     });
-    
+
     try {
-      final cities = await _forecastService.getSavedCities();
+      final forecast = await _forecastService.getCityForecast(city);
       setState(() {
-        _cities = cities;
+        _forecast = forecast;
         _isLoading = false;
       });
     } catch (e) {
       setState(() {
-        _error = 'Failed to load cities';
+        _error = 'Failed to load forecast';
         _isLoading = false;
       });
     }
@@ -43,27 +42,36 @@ class _CitiesScreenState extends State<CitiesScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Cities'),
         centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadCities,
+      ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Search for a city...',
+                prefixIcon: const Icon(Icons.search),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.send),
+                  onPressed: () => _searchCity(_searchController.text),
+                ),
+              ),
+              onSubmitted: _searchCity,
+            ),
+          ),
+          Expanded(
+            child: _buildBody(theme),
           ),
         ],
-      ),
-      body: _buildBody(theme),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          // TODO: Add city search/add dialog
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Add city coming soon')),
-          );
-        },
-        child: const Icon(Icons.add),
       ),
     );
   }
@@ -72,7 +80,7 @@ class _CitiesScreenState extends State<CitiesScreen> {
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
-    
+
     if (_error != null) {
       return Center(
         child: Column(
@@ -81,24 +89,22 @@ class _CitiesScreenState extends State<CitiesScreen> {
             Icon(Icons.error_outline, size: 48, color: theme.colorScheme.error),
             const SizedBox(height: 16),
             Text(_error!, style: theme.textTheme.titleMedium),
-            const SizedBox(height: 16),
-            FilledButton(onPressed: _loadCities, child: const Text('Retry')),
           ],
         ),
       );
     }
-    
-    if (_cities.isEmpty) {
+
+    if (_forecast == null) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(Icons.location_city, size: 64, color: theme.colorScheme.primary),
             const SizedBox(height: 16),
-            Text('No saved cities', style: theme.textTheme.titleLarge),
+            Text('Search for a city', style: theme.textTheme.titleLarge),
             const SizedBox(height: 8),
             Text(
-              'Tap + to add your first city',
+              'Enter a city name to get the weather forecast',
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
@@ -107,52 +113,56 @@ class _CitiesScreenState extends State<CitiesScreen> {
         ),
       );
     }
-    
-    return RefreshIndicator(
-      onRefresh: _loadCities,
-      child: ListView.builder(
-        itemCount: _cities.length,
-        itemBuilder: (context, index) {
-          final city = _cities[index];
-          return _CityCard(city: city);
-        },
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.location_on, color: theme.colorScheme.primary),
+                      const SizedBox(width: 8),
+                      Text(
+                        _currentCity ?? 'Unknown',
+                        style: theme.textTheme.titleLarge,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  if (_forecast!['response'] != null)
+                    Text(
+                      _forecast!['response'],
+                      style: theme.textTheme.bodyLarge,
+                    )
+                  else if (_forecast!['summary'] != null)
+                    Text(
+                      _forecast!['summary'],
+                      style: theme.textTheme.bodyLarge,
+                    )
+                  else
+                    Text(
+                      'No forecast data available',
+                      style: theme.textTheme.bodyLarge,
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
-}
 
-class _CityCard extends StatelessWidget {
-  final Map<String, dynamic> city;
-  
-  const _CityCard({required this.city});
-  
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final name = city['name'] ?? 'Unknown';
-    final temp = city['temp'] ?? '--';
-    final conditions = city['conditions'] ?? 'No data';
-    
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: ListTile(
-        leading: Icon(
-          Icons.wb_sunny,
-          color: theme.colorScheme.primary,
-          size: 32,
-        ),
-        title: Text(name, style: theme.textTheme.titleMedium),
-        subtitle: Text(conditions),
-        trailing: Text(
-          '$temp°',
-          style: theme.textTheme.headlineSmall?.copyWith(
-            color: theme.colorScheme.primary,
-          ),
-        ),
-        onTap: () {
-          // TODO: Navigate to city detail
-        },
-      ),
-    );
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 }

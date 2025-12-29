@@ -5,13 +5,75 @@ import 'api_config.dart';
 
 class OceanService {
   final ApiService _api = ApiService();
-  
-  /// Fetch current ocean conditions
-  Future<Map<String, dynamic>?> getConditions({String? location}) async {
+
+  /// Health check
+  Future<bool> checkHealth() async {
+    try {
+      final response = await _api.get(ApiConfig.oceanHealth);
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /// Fetch latest SST data
+  Future<Map<String, dynamic>?> getLatestSST() async {
+    try {
+      final response = await _api.get(ApiConfig.latestSST);
+      if (response.statusCode == 200) {
+        return response.data;
+      }
+    } catch (e) {
+      // Return null on error
+    }
+    return null;
+  }
+
+  /// Fetch latest chlorophyll data
+  Future<Map<String, dynamic>?> getLatestChlorophyll() async {
+    try {
+      final response = await _api.get(ApiConfig.latestChlorophyll);
+      if (response.statusCode == 200) {
+        return response.data;
+      }
+    } catch (e) {
+      // Return null on error
+    }
+    return null;
+  }
+
+  /// Fetch latest ocean currents
+  Future<Map<String, dynamic>?> getLatestCurrents() async {
+    try {
+      final response = await _api.get(ApiConfig.latestCurrents);
+      if (response.statusCode == 200) {
+        return response.data;
+      }
+    } catch (e) {
+      // Return null on error
+    }
+    return null;
+  }
+
+  /// Fetch latest wave data
+  Future<Map<String, dynamic>?> getLatestWaves() async {
+    try {
+      final response = await _api.get(ApiConfig.latestWaves);
+      if (response.statusCode == 200) {
+        return response.data;
+      }
+    } catch (e) {
+      // Return null on error
+    }
+    return null;
+  }
+
+  /// Fetch point data for specific coordinates
+  Future<Map<String, dynamic>?> getPointData(double lat, double lon) async {
     try {
       final response = await _api.get(
-        ApiConfig.oceanConditions,
-        params: location != null ? {'location': location} : null,
+        ApiConfig.oceanPointData,
+        params: {'lat': lat, 'lon': lon},
       );
       if (response.statusCode == 200) {
         return response.data;
@@ -21,31 +83,11 @@ class OceanService {
     }
     return null;
   }
-  
-  /// Fetch species fishing scores
-  Future<List<Map<String, dynamic>>> getSpeciesScores({String? location}) async {
+
+  /// Fetch data freshness info
+  Future<Map<String, dynamic>?> getDataAge() async {
     try {
-      final response = await _api.get(
-        ApiConfig.speciesScores,
-        params: location != null ? {'location': location} : null,
-      );
-      if (response.statusCode == 200 && response.data is List) {
-        return List<Map<String, dynamic>>.from(response.data);
-      }
-    } catch (e) {
-      // Return empty on error
-    }
-    return [];
-  }
-  
-  /// Fetch sea surface temperature data
-  Future<Map<String, dynamic>?> getSSTData({double? lat, double? lon}) async {
-    try {
-      final params = <String, dynamic>{};
-      if (lat != null) params['lat'] = lat;
-      if (lon != null) params['lon'] = lon;
-      
-      final response = await _api.get(ApiConfig.sstData, params: params);
+      final response = await _api.get(ApiConfig.oceanDataAge);
       if (response.statusCode == 200) {
         return response.data;
       }
@@ -54,36 +96,9 @@ class OceanService {
     }
     return null;
   }
-  
-  /// Fetch tide information
-  Future<Map<String, dynamic>?> getTides({String? stationId}) async {
-    try {
-      final response = await _api.get(
-        ApiConfig.tides,
-        params: stationId != null ? {'station': stationId} : null,
-      );
-      if (response.statusCode == 200) {
-        return response.data;
-      }
-    } catch (e) {
-      // Return null on error
-    }
-    return null;
-  }
-  
-  /// Fetch inlet conditions
-  Future<Map<String, dynamic>?> getInletConditions({String? inlet}) async {
-    try {
-      final response = await _api.get(
-        ApiConfig.inletConditions,
-        params: inlet != null ? {'inlet': inlet} : null,
-      );
-      if (response.statusCode == 200) {
-        return response.data;
-      }
-    } catch (e) {
-      // Return null on error
-    }
-    return null;
+
+  /// Get tile URL for map overlay
+  String getTileUrl(String type) {
+    return '${ApiConfig.oceanTiles}/$type/{z}/{x}/{y}.png';
   }
 }

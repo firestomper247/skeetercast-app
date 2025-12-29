@@ -6,7 +6,7 @@ class CaptainSteveScreen extends StatelessWidget {
   const CaptainSteveScreen({super.key});
 
   Future<void> _openChat() async {
-    final uri = Uri.parse(CaptainSteveService.chatUrl);
+    final uri = Uri.parse(CaptainSteveService.chatPageUrl);
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     }

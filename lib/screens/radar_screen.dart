@@ -15,7 +15,7 @@ class _RadarScreenState extends State<RadarScreen> {
   final RadarService _radarService = RadarService();
   final MapController _mapController = MapController();
   List<Map<String, dynamic>> _alerts = [];
-  bool _showRadar = true;
+  bool _showRadar = false;  // Disabled by default - tiles not available yet
   bool _showSatellite = false;
   
   // Default to NC Outer Banks area
@@ -29,10 +29,12 @@ class _RadarScreenState extends State<RadarScreen> {
   }
 
   Future<void> _loadAlerts() async {
-    final alerts = await _radarService.getAlerts();
-    setState(() {
-      _alerts = alerts;
-    });
+    final response = await _radarService.getActiveWarnings();
+    if (response != null && response['warnings'] is List) {
+      setState(() {
+        _alerts = List<Map<String, dynamic>>.from(response['warnings']);
+      });
+    }
   }
 
   @override
