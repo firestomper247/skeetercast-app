@@ -1,7 +1,8 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'theme/app_theme.dart';
 import 'providers/theme_provider.dart';
+import 'services/auth_service.dart';
 import 'screens/radar_screen.dart';
 import 'screens/cities_screen.dart';
 import 'screens/fishing_screen.dart';
@@ -12,8 +13,11 @@ import 'screens/settings_screen.dart';
 
 void main() {
   runApp(
-    ChangeNotifierProvider(
-      create: (_) => ThemeProvider(),
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        ChangeNotifierProvider(create: (_) => AuthService()),
+      ],
       child: const SkeeterCastApp(),
     ),
   );
@@ -50,8 +54,8 @@ class _MainNavigationState extends State<MainNavigation> {
   int _selectedIndex = 0;
 
   final List<Widget> _screens = const [
-    RadarScreen(),
     CitiesScreen(),
+    RadarScreen(),
     FishingScreen(),
     CaptainSteveScreen(),
     BuddiesScreen(),
@@ -61,14 +65,14 @@ class _MainNavigationState extends State<MainNavigation> {
 
   final List<NavigationDestination> _destinations = const [
     NavigationDestination(
-      icon: Icon(Icons.radar_outlined),
-      selectedIcon: Icon(Icons.radar),
-      label: 'Radar',
-    ),
-    NavigationDestination(
       icon: Icon(Icons.location_city_outlined),
       selectedIcon: Icon(Icons.location_city),
       label: 'Cities',
+    ),
+    NavigationDestination(
+      icon: Icon(Icons.radar_outlined),
+      selectedIcon: Icon(Icons.radar),
+      label: 'Radar',
     ),
     NavigationDestination(
       icon: Icon(Icons.phishing_outlined),

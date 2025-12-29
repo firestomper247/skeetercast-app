@@ -7,12 +7,14 @@ import 'api_config.dart';
 
 class AuthService extends ChangeNotifier {
   final ApiService _api = ApiService();
-  
+
   bool _isLoggedIn = false;
+  String? _username;
   String? _email;
   String? _tier; // free, basic, premium
-  
+
   bool get isLoggedIn => _isLoggedIn;
+  String? get username => _username;
   String? get email => _email;
   String? get tier => _tier;
   bool get isPremium => _tier == 'premium';
@@ -35,25 +37,31 @@ class AuthService extends ChangeNotifier {
     }
   }
   
-  Future<bool> login(String email, String password) async {
+  Future<bool> login(String username, String password) async {
     try {
       final response = await _api.post(
         ApiConfig.login,
         data: {
-          'email': email,
+          'username': username,
           'password': password,
         },
       );
-      
+
       if (response.statusCode == 200) {
         await _api.saveToken(response.data['token']);
         if (response.data['refresh_token'] != null) {
           await _api.saveRefreshToken(response.data['refresh_token']);
         }
-        
+        if (response.data['session_token'] != null) {
+          await _api.saveSessionToken(response.data['session_token']);
+        }
+
+        // User data is nested under 'user' key from API
+        final userData = response.data['user'] ?? {};
         _isLoggedIn = true;
-        _email = email;
-        _tier = response.data['tier'] ?? 'free';
+        _username = userData['username'] ?? username;
+        _email = userData['email'];
+        _tier = userData['tier'] ?? 'free';
         notifyListeners();
         return true;
       }
@@ -86,19 +94,23 @@ class AuthService extends ChangeNotifier {
   Future<void> logout() async {
     await _api.clearTokens();
     _isLoggedIn = false;
+    _username = null;
     _email = null;
     _tier = null;
     notifyListeners();
   }
-  
+
   Future<void> fetchUserProfile() async {
     try {
       final response = await _api.get(ApiConfig.userProfile);
-      
+
       if (response.statusCode == 200) {
+        // User data is nested under 'user' key from API
+        final userData = response.data['user'] ?? {};
         _isLoggedIn = true;
-        _email = response.data['email'];
-        _tier = response.data['tier'] ?? 'free';
+        _username = userData['username'];
+        _email = userData['email'];
+        _tier = userData['tier'] ?? 'free';
         notifyListeners();
       }
     } catch (e) {

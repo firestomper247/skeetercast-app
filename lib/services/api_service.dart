@@ -14,6 +14,7 @@ class ApiService {
   
   static const String _tokenKey = 'jwt_token';
   static const String _refreshTokenKey = 'refresh_token';
+  static const String _sessionTokenKey = 'session_token';
   
   ApiService._internal() {
     _dio = Dio(BaseOptions(
@@ -70,10 +71,15 @@ class ApiService {
   Future<void> saveRefreshToken(String token) async {
     await _storage.write(key: _refreshTokenKey, value: token);
   }
-  
+
+  Future<void> saveSessionToken(String token) async {
+    await _storage.write(key: _sessionTokenKey, value: token);
+  }
+
   Future<void> clearTokens() async {
     await _storage.delete(key: _tokenKey);
     await _storage.delete(key: _refreshTokenKey);
+    await _storage.delete(key: _sessionTokenKey);
   }
   
   Future<bool> _refreshToken() async {

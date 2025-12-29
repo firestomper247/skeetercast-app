@@ -5,7 +5,7 @@ class ApiConfig {
   // Base URLs for all SkeeterCast services (via Cloudflare tunnel)
   static const String authBase = 'https://auth.skeetercast.com';
   static const String oceanBase = 'https://ocean.skeetercast.com';
-  static const String steveBase = 'https://ai.skeetercast.com';
+  static const String steveBase = 'https://steve.skeetercast.com';
   static const String radarBase = 'https://radar.skeetercast.com';
   static const String mapsBase = 'https://maps.skeetercast.com';
   static const String mainSite = 'https://skeetercast.com';
@@ -44,6 +44,23 @@ class ApiConfig {
 
   // Maps endpoints
   static const String mapsHealth = '$mapsBase/api/health';
+
+  // Forecast endpoints (full weather data)
+  static String forecastByCity(String city) => '$mainSite/api/forecast/city/$city';
+  static String forecastByZipcode(String zip) => '$mainSite/api/forecast/zipcode/$zip';
+  static String warningsByLocation(double lat, double lon) =>
+      '$radarBase/api/warnings/location?lat=$lat&lon=$lon';
+
+  // Saved Cities endpoints
+  static const String savedCities = '$authBase/api/saved-cities';
+  static String deleteSavedCity(int cityId) => '$authBase/api/saved-cities/$cityId';
+
+  // User Fishing Spots endpoints
+  static const String userSpots = '$authBase/api/spots';
+  static String deleteSpot(int spotId) => '$authBase/api/spots/$spotId';
+
+  // SSH Contours (GeoJSON)
+  static const String sshContours = '$oceanBase/api/ocean/latest-ssh';
 
   // Static content
   static const String weatherVideo = '$mainSite/videos/weather_latest.mp4';
