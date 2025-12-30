@@ -167,4 +167,52 @@ class OceanService {
       return false;
     }
   }
+
+  // ==================== INSHORE METHODS ====================
+
+  /// Fetch inshore conditions (water temp, tide, wind, moon, chop)
+  Future<Map<String, dynamic>?> getInshoreConditions(double lat, double lon) async {
+    try {
+      final response = await _api.get(ApiConfig.inshoreConditions(lat, lon));
+      if (response.statusCode == 200) {
+        return response.data;
+      }
+    } catch (e) {
+      // Return null on error
+    }
+    return null;
+  }
+
+  /// Fetch inshore GeoJSON layer
+  Future<Map<String, dynamic>?> getInshoreLayer(String layerType) async {
+    try {
+      String url;
+      switch (layerType) {
+        case 'oysterBeds':
+          url = ApiConfig.inshoreOysterBeds;
+          break;
+        case 'artificialReefs':
+          url = ApiConfig.inshoreArtificialReefs;
+          break;
+        case 'seagrass':
+          url = ApiConfig.inshoreSeagrass;
+          break;
+        case 'boatRamps':
+          url = ApiConfig.inshoreBoatRamps;
+          break;
+        case 'shellBottom':
+          url = ApiConfig.inshoreShellBottom;
+          break;
+        default:
+          return null;
+      }
+      final response = await _api.get(url);
+      if (response.statusCode == 200) {
+        return response.data;
+      }
+    } catch (e) {
+      // Return null on error
+    }
+    return null;
+  }
 }

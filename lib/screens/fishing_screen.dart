@@ -3,6 +3,8 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../services/ocean_service.dart';
 import '../services/captain_steve_service.dart';
+import 'inshore_map.dart';
+import 'inlet_map.dart';
 
 class FishingScreen extends StatefulWidget {
   const FishingScreen({super.key});
@@ -11,17 +13,20 @@ class FishingScreen extends StatefulWidget {
   State<FishingScreen> createState() => _FishingScreenState();
 }
 
-class _FishingScreenState extends State<FishingScreen> {
+class _FishingScreenState extends State<FishingScreen> with SingleTickerProviderStateMixin {
   final OceanService _oceanService = OceanService();
   final CaptainSteveService _steveService = CaptainSteveService();
   final MapController _mapController = MapController();
+
+  // Tab controller for swipeable tabs
+  late TabController _tabController;
 
   // NC Outer Banks default view
   static const LatLng _defaultCenter = LatLng(35.2, -75.5);
   static const double _defaultZoom = 7.0;
 
   // View mode
-  int _selectedMode = 0; // 0=Offshore, 1=Inshore, 2=Strike Times
+  int _selectedMode = 0; // 0=Offshore, 1=Inshore, 2=Strike Times, 3=Inlets
 
   // Layer toggles
   bool _showSST = false;
@@ -48,7 +53,21 @@ class _FishingScreenState extends State<FishingScreen> {
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 4, vsync: this);
+    _tabController.addListener(() {
+      if (!_tabController.indexIsChanging) {
+        setState(() {
+          _selectedMode = _tabController.index;
+        });
+      }
+    });
     _loadData();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadData() async {
@@ -520,294 +539,298 @@ class _FishingScreenState extends State<FishingScreen> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      body: Stack(
+      body: Column(
         children: [
-          // Map
-          FlutterMap(
-            mapController: _mapController,
-            options: MapOptions(
-              initialCenter: _defaultCenter,
-              initialZoom: _defaultZoom,
-              minZoom: 5,
-              maxZoom: 12,
-              onTap: _onMapTap,
-            ),
-            children: [
-              // Base map layer
-              TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.skeetercast.app',
-              ),
-
-              // SST layer
-              if (_showSST)
-                Opacity(
-                  opacity: 0.7,
-                  child: TileLayer(
-                    urlTemplate: _oceanService.getTileUrl('sst'),
-                    userAgentPackageName: 'com.skeetercast.app',
-                    tileProvider: NetworkTileProvider(),
-                  ),
-                ),
-
-              // Chlorophyll layer
-              if (_showChlorophyll)
-                Opacity(
-                  opacity: 0.7,
-                  child: TileLayer(
-                    urlTemplate: _oceanService.getTileUrl('chlorophyll'),
-                    userAgentPackageName: 'com.skeetercast.app',
-                    tileProvider: NetworkTileProvider(),
-                  ),
-                ),
-
-              // SSH Contours layer
-              if (_showSSH && _sshData != null)
-                PolylineLayer(
-                  polylines: _buildSSHContours(),
-                ),
-
-              // Steve's Picks
-              if (_showStevePicks && _stevePicks.isNotEmpty)
-                MarkerLayer(
-                  markers: _stevePicks.map((pick) {
-                    final score = pick['score'] as int? ?? 0;
-                    final color = score >= 75
-                        ? Colors.green
-                        : score >= 60
-                            ? Colors.orange
-                            : Colors.red;
-                    return Marker(
-                      point: LatLng(pick['lat'], pick['lon']),
-                      width: 36,
-                      height: 36,
-                      child: GestureDetector(
-                        onTap: () => _showStevePickInfo(pick),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: color,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white, width: 2),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.3),
-                                blurRadius: 4,
-                              ),
-                            ],
-                          ),
-                          child: Center(
-                            child: Text(
-                              '$score',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-
-              // User saved spots
-              if (_showMySpots && _userSpots.isNotEmpty)
-                MarkerLayer(
-                  markers: _userSpots.map((spot) {
-                    return Marker(
-                      point: LatLng(
-                        (spot['latitude'] as num).toDouble(),
-                        (spot['longitude'] as num).toDouble(),
-                      ),
-                      width: 40,
-                      height: 40,
-                      child: GestureDetector(
-                        onTap: () => _showSpotInfo(spot),
-                        child: const Icon(
-                          Icons.star,
-                          color: Colors.orange,
-                          size: 32,
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-
-              // Selected point marker
-              if (_selectedPoint != null)
-                MarkerLayer(
-                  markers: [
-                    Marker(
-                      point: _selectedPoint!,
-                      width: 40,
-                      height: 40,
-                      child: Icon(
-                        Icons.location_on,
-                        color: theme.colorScheme.primary,
-                        size: 40,
-                      ),
+          // Safe area + Tab bar at top
+          Container(
+            color: theme.colorScheme.surface,
+            child: SafeArea(
+              bottom: false,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surface,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
                     ),
                   ],
                 ),
-            ],
-          ),
-
-          // Top bar with mode toggle
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 8,
-            left: 8,
-            right: 8,
-            child: _buildTopBar(theme),
-          ),
-
-          // Layer controls
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 70,
-            right: 8,
-            child: _buildLayerControls(theme),
-          ),
-
-          // Map controls
-          Positioned(
-            bottom: _selectedPoint != null ? 220 : 100,
-            right: 8,
-            child: _buildMapControls(theme),
-          ),
-
-          // Point data panel
-          if (_selectedPoint != null)
-            Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: _buildPointDataPanel(theme),
-            ),
-
-          // Bottom info bar (when no point selected)
-          if (_selectedPoint == null)
-            Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: _buildBottomInfoBar(theme),
-            ),
-
-          // Loading indicator
-          if (_isLoadingData)
-            Positioned(
-              top: MediaQuery.of(context).padding.top + 130,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surface,
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.2),
-                        blurRadius: 8,
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: theme.colorScheme.primary,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      const Text('Loading fishing data...'),
-                    ],
-                  ),
+                child: TabBar(
+                  controller: _tabController,
+                  labelColor: theme.colorScheme.primary,
+                  unselectedLabelColor: theme.colorScheme.onSurfaceVariant,
+                  indicatorColor: theme.colorScheme.primary,
+                  indicatorWeight: 3,
+                  labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  unselectedLabelStyle: const TextStyle(fontSize: 13),
+                  tabs: const [
+                    Tab(icon: Icon(Icons.waves, size: 20), text: 'Offshore'),
+                    Tab(icon: Icon(Icons.water, size: 20), text: 'Inshore'),
+                    Tab(icon: Icon(Icons.schedule, size: 20), text: 'Strike Times'),
+                    Tab(icon: Icon(Icons.anchor, size: 20), text: 'Inlets'),
+                  ],
                 ),
               ),
             ),
+          ),
+          // Content area
+          Expanded(
+            child: _buildTabContent(theme),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildTopBar(ThemeData theme) {
-    return Container(
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.15),
-            blurRadius: 8,
+  Widget _buildTabContent(ThemeData theme) {
+    switch (_selectedMode) {
+      case 1:
+        return const InshoreMap();
+      case 3:
+        return const InletMap();
+      case 2:
+        return _buildStrikeTimesContent(theme);
+      default:
+        return _buildOffshoreContent(theme);
+    }
+  }
+
+  Widget _buildStrikeTimesContent(ThemeData theme) {
+    return Stack(
+      children: [
+        // Map background
+        FlutterMap(
+          mapController: _mapController,
+          options: MapOptions(
+            initialCenter: _defaultCenter,
+            initialZoom: _defaultZoom,
+            minZoom: 5,
+            maxZoom: 12,
           ),
-        ],
-      ),
-      child: Row(
-        children: [
-          // Back/menu button
-          IconButton(
-            icon: const Icon(Icons.phishing),
-            onPressed: () {},
+          children: [
+            TileLayer(
+              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              userAgentPackageName: 'com.skeetercast.app',
+            ),
+          ],
+        ),
+        // Strike times info
+        Positioned(
+          bottom: 0,
+          left: 0,
+          right: 0,
+          child: _buildStrikeTimesBar(theme),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildOffshoreContent(ThemeData theme) {
+    return Stack(
+      children: [
+        // Map
+        FlutterMap(
+          mapController: _mapController,
+          options: MapOptions(
+            initialCenter: _defaultCenter,
+            initialZoom: _defaultZoom,
+            minZoom: 5,
+            maxZoom: 12,
+            onTap: _onMapTap,
           ),
-          // Mode segmented button
-          Expanded(
-            child: SegmentedButton<int>(
-              segments: const [
-                ButtonSegment(
-                  value: 0,
-                  label: Text('Offshore'),
-                  icon: Icon(Icons.waves, size: 16),
+          children: [
+            // Base map layer
+            TileLayer(
+              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              userAgentPackageName: 'com.skeetercast.app',
+            ),
+
+            // SST layer
+            if (_showSST)
+              Opacity(
+                opacity: 0.7,
+                child: TileLayer(
+                  urlTemplate: _oceanService.getTileUrl('sst'),
+                  userAgentPackageName: 'com.skeetercast.app',
+                  tileProvider: NetworkTileProvider(),
                 ),
-                ButtonSegment(
-                  value: 1,
-                  label: Text('Inshore'),
-                  icon: Icon(Icons.water, size: 16),
+              ),
+
+            // Chlorophyll layer
+            if (_showChlorophyll)
+              Opacity(
+                opacity: 0.7,
+                child: TileLayer(
+                  urlTemplate: _oceanService.getTileUrl('chlorophyll'),
+                  userAgentPackageName: 'com.skeetercast.app',
+                  tileProvider: NetworkTileProvider(),
                 ),
-                ButtonSegment(
-                  value: 2,
-                  label: Text('Times'),
-                  icon: Icon(Icons.schedule, size: 16),
+              ),
+
+            // SSH Contours layer
+            if (_showSSH && _sshData != null)
+              PolylineLayer(
+                polylines: _buildSSHContours(),
+              ),
+
+            // Steve's Picks
+            if (_showStevePicks && _stevePicks.isNotEmpty)
+              MarkerLayer(
+                markers: _stevePicks.map((pick) {
+                  final score = pick['score'] as int? ?? 0;
+                  final color = score >= 75
+                      ? Colors.green
+                      : score >= 60
+                          ? Colors.orange
+                          : Colors.red;
+                  return Marker(
+                    point: LatLng(pick['lat'], pick['lon']),
+                    width: 36,
+                    height: 36,
+                    child: GestureDetector(
+                      onTap: () => _showStevePickInfo(pick),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: color,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.3),
+                              blurRadius: 4,
+                            ),
+                          ],
+                        ),
+                        child: Center(
+                          child: Text(
+                            '$score',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+
+            // User saved spots
+            if (_showMySpots && _userSpots.isNotEmpty)
+              MarkerLayer(
+                markers: _userSpots.map((spot) {
+                  return Marker(
+                    point: LatLng(
+                      (spot['latitude'] as num).toDouble(),
+                      (spot['longitude'] as num).toDouble(),
+                    ),
+                    width: 40,
+                    height: 40,
+                    child: GestureDetector(
+                      onTap: () => _showSpotInfo(spot),
+                      child: const Icon(
+                        Icons.star,
+                        color: Colors.orange,
+                        size: 32,
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+
+            // Selected point marker
+            if (_selectedPoint != null)
+              MarkerLayer(
+                markers: [
+                  Marker(
+                    point: _selectedPoint!,
+                    width: 40,
+                    height: 40,
+                    child: Icon(
+                      Icons.location_on,
+                      color: theme.colorScheme.primary,
+                      size: 40,
+                    ),
+                  ),
+                ],
+              ),
+          ],
+        ),
+
+        // Layer controls
+        Positioned(
+          top: 8,
+          right: 8,
+          child: _buildLayerControls(theme),
+        ),
+
+        // Map controls
+        Positioned(
+          bottom: _selectedPoint != null ? 220 : 100,
+          right: 8,
+          child: _buildMapControls(theme),
+        ),
+
+        // Point data panel
+        if (_selectedPoint != null)
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: _buildPointDataPanel(theme),
+          ),
+
+        // Bottom info bar (when no point selected)
+        if (_selectedPoint == null)
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: _buildBottomInfoBar(theme),
+          ),
+
+        // Loading indicator
+        if (_isLoadingData)
+          Positioned(
+            top: 60,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surface,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.2),
+                      blurRadius: 8,
+                    ),
+                  ],
                 ),
-              ],
-              selected: {_selectedMode},
-              onSelectionChanged: (Set<int> selection) {
-                setState(() {
-                  _selectedMode = selection.first;
-                  // Reset layers based on mode
-                  if (_selectedMode == 0) {
-                    // Offshore - show ocean layers
-                    _showSST = true;
-                    _showChlorophyll = false;
-                  } else if (_selectedMode == 1) {
-                    // Inshore - show inshore layers
-                    _showSST = false;
-                    _showChlorophyll = true;
-                  } else {
-                    // Strike times
-                    _showSST = false;
-                    _showChlorophyll = false;
-                  }
-                });
-              },
-              showSelectedIcon: false,
-              style: ButtonStyle(
-                visualDensity: VisualDensity.compact,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    const Text('Loading fishing data...'),
+                  ],
+                ),
               ),
             ),
           ),
-          // Refresh button
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadData,
-          ),
-        ],
-      ),
+      ],
     );
   }
 
@@ -1236,7 +1259,9 @@ class _FishingScreenState extends State<FishingScreen> {
 
     final today = data['today'] as Map<String, dynamic>?;
     final score = today?['fishing_score'] ?? 0;
-    final phase = today?['moon_phase'] ?? 'Unknown';
+    final phaseEmoji = today?['phase_emoji'] ?? '🌙';
+    final phaseName = today?['phase_name'] ?? 'Unknown';
+    final majorPeriods = today?['major_periods'] as List<dynamic>? ?? [];
 
     Color scoreColor;
     String scoreLabel;
@@ -1245,13 +1270,19 @@ class _FishingScreenState extends State<FishingScreen> {
       scoreLabel = 'Fish On!';
     } else if (score >= 6) {
       scoreColor = Colors.orange;
-      scoreLabel = 'Fair Winds';
+      scoreLabel = 'Good';
     } else if (score >= 4) {
       scoreColor = Colors.yellow.shade700;
-      scoreLabel = 'Steady';
+      scoreLabel = 'Fair';
     } else {
       scoreColor = Colors.red;
       scoreLabel = 'Slow';
+    }
+
+    // Format best times from major periods
+    String bestTimes = '';
+    if (majorPeriods.isNotEmpty) {
+      bestTimes = majorPeriods.take(2).map((p) => p['start'] ?? '').join(', ');
     }
 
     return Container(
@@ -1294,35 +1325,265 @@ class _FishingScreenState extends State<FishingScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      scoreLabel,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: scoreColor,
-                      ),
+                    Row(
+                      children: [
+                        Text(
+                          scoreLabel,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: scoreColor,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(phaseEmoji, style: const TextStyle(fontSize: 18)),
+                      ],
                     ),
                     Text(
-                      'Moon: $phase',
+                      phaseName,
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
-                    if (today?['best_times'] != null)
+                    if (bestTimes.isNotEmpty)
                       Text(
-                        'Best: ${(today!['best_times'] as List).take(2).join(', ')}',
-                        style: theme.textTheme.bodySmall,
+                        'Peak: $bestTimes',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                   ],
                 ),
               ),
-              TextButton(
-                onPressed: () {
-                  // TODO: Show full strike times calendar
-                },
+              FilledButton.tonal(
+                onPressed: () => _showWeeklyStrikeTimes(context),
                 child: const Text('View Week'),
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  void _showWeeklyStrikeTimes(BuildContext context) {
+    final week = _strikeTimesData?['week'] as List<dynamic>? ?? [];
+    if (week.isEmpty) return;
+
+    final theme = Theme.of(context);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.7,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          expand: false,
+          builder: (_, scrollController) {
+            return Column(
+              children: [
+                // Handle bar
+                Container(
+                  margin: const EdgeInsets.only(top: 8),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                // Header
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      const Text('🎣', style: TextStyle(fontSize: 24)),
+                      const SizedBox(width: 12),
+                      Text(
+                        'Strike Times - 7 Day Forecast',
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Week list
+                Expanded(
+                  child: ListView.builder(
+                    controller: scrollController,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: week.length,
+                    itemBuilder: (ctx, index) {
+                      final day = week[index] as Map<String, dynamic>;
+                      return _buildDayCard(theme, day, index == 0);
+                    },
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildDayCard(ThemeData theme, Map<String, dynamic> day, bool isToday) {
+    final dayName = day['day_name'] ?? '';
+    final date = day['date'] ?? '';
+    final score = day['fishing_score'] ?? 0;
+    final phaseEmoji = day['phase_emoji'] ?? '🌙';
+    final phaseName = day['phase_name'] ?? '';
+    final majorPeriods = day['major_periods'] as List<dynamic>? ?? [];
+    final minorPeriods = day['minor_periods'] as List<dynamic>? ?? [];
+
+    Color scoreColor;
+    if (score >= 8) {
+      scoreColor = Colors.green;
+    } else if (score >= 6) {
+      scoreColor = Colors.orange;
+    } else if (score >= 4) {
+      scoreColor = Colors.yellow.shade700;
+    } else {
+      scoreColor = Colors.red;
+    }
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      color: isToday ? theme.colorScheme.primaryContainer.withValues(alpha: 0.3) : null,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header row
+            Row(
+              children: [
+                // Score badge
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: scoreColor,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(
+                    child: Text(
+                      '$score',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            isToday ? 'Today' : dayName,
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          if (isToday)
+                            Container(
+                              margin: const EdgeInsets.only(left: 8),
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.primary,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                dayName,
+                                style: TextStyle(
+                                  color: theme.colorScheme.onPrimary,
+                                  fontSize: 10,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      Text(
+                        date,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Column(
+                  children: [
+                    Text(phaseEmoji, style: const TextStyle(fontSize: 24)),
+                    Text(
+                      phaseName,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            // Major periods
+            if (majorPeriods.isNotEmpty) ...[
+              Text(
+                'MAJOR (Best Fishing)',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: Colors.green.shade700,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Wrap(
+                spacing: 8,
+                children: majorPeriods.map((p) {
+                  return Chip(
+                    label: Text('${p['start']} - ${p['end']}'),
+                    backgroundColor: Colors.green.withValues(alpha: 0.1),
+                    labelStyle: TextStyle(color: Colors.green.shade700, fontSize: 12),
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
+                  );
+                }).toList(),
+              ),
+            ],
+            const SizedBox(height: 8),
+            // Minor periods
+            if (minorPeriods.isNotEmpty) ...[
+              Text(
+                'MINOR (Good Fishing)',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: Colors.blue.shade700,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Wrap(
+                spacing: 8,
+                children: minorPeriods.map((p) {
+                  return Chip(
+                    label: Text('${p['start']} - ${p['end']}'),
+                    backgroundColor: Colors.blue.withValues(alpha: 0.1),
+                    labelStyle: TextStyle(color: Colors.blue.shade700, fontSize: 12),
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
+                  );
+                }).toList(),
+              ),
+            ],
+          ],
         ),
       ),
     );

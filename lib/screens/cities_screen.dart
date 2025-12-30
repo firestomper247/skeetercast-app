@@ -457,11 +457,15 @@ class _CitiesScreenState extends State<CitiesScreen> with SingleTickerProviderSt
 
     final temp = (obs?['temperature_f'] ?? current?['temperature_f'] ?? 0).round();
     final conditions = current?['short_forecast'] ?? 'Unknown';
-    final humidity = obs?['humidity_pct'] ?? current?['humidity_pct'];
+    final humidity = obs?['humidity_pct'] != null
+        ? (obs!['humidity_pct'] as num).round()
+        : (current?['humidity_pct'] as num?)?.round();
     final windSpeed = obs?['wind_speed_mph'] != null
-        ? '${obs['wind_speed_mph']} mph'
+        ? '${(obs!['wind_speed_mph'] as num).round()} mph'
         : current?['wind_speed'] ?? 'N/A';
     final windDir = current?['wind_direction'] ?? '';
+    final observationTime = obs?['observation_time'] as String?;
+    final stationName = obs?['station_name'] as String?;
     final dewpoint = current?['dewpoint_f']?.round();
     final precip = current?['precip_probability'] ?? 0;
 
@@ -513,6 +517,17 @@ class _CitiesScreenState extends State<CitiesScreen> with SingleTickerProviderSt
                   conditions,
                   style: theme.textTheme.titleMedium?.copyWith(color: Colors.white),
                 ),
+                if (observationTime != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(
+                      'Updated: ${_formatObservationTime(observationTime)}${stationName != null ? ' ($stationName)' : ''}',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.7),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
                 const SizedBox(height: 16),
                 // Details Grid
                 Row(
@@ -612,6 +627,27 @@ class _CitiesScreenState extends State<CitiesScreen> with SingleTickerProviderSt
       final ampm = hour >= 12 ? 'PM' : 'AM';
       final hour12 = hour == 0 ? 12 : (hour > 12 ? hour - 12 : hour);
       return '$hour12:00 $ampm';
+    } catch (e) {
+      return time;
+    }
+  }
+
+  String _formatObservationTime(String time) {
+    try {
+      final dt = DateTime.parse(time).toLocal();
+      final now = DateTime.now();
+      final diff = now.difference(dt);
+
+      if (diff.inMinutes < 60) {
+        return '${diff.inMinutes} min ago';
+      } else if (diff.inHours < 24) {
+        return '${diff.inHours}h ago';
+      } else {
+        final hour = dt.hour;
+        final ampm = hour >= 12 ? 'PM' : 'AM';
+        final hour12 = hour == 0 ? 12 : (hour > 12 ? hour - 12 : hour);
+        return '${dt.month}/${dt.day} $hour12:${dt.minute.toString().padLeft(2, '0')} $ampm';
+      }
     } catch (e) {
       return time;
     }

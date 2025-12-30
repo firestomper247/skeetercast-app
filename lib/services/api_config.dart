@@ -62,6 +62,24 @@ class ApiConfig {
   // SSH Contours (GeoJSON)
   static const String sshContours = '$oceanBase/api/ocean/latest-ssh';
 
+  // Inshore endpoints
+  static String inshoreConditions(double lat, double lon) =>
+      '$mainSite/api/inshore/conditions?lat=$lat&lon=$lon';
+  static const String inshoreOysterBeds = '$mainSite/data/inshore/oyster-sanctuaries.geojson';
+  static const String inshoreArtificialReefs = '$mainSite/data/inshore/artificial-reefs.geojson';
+  static const String inshoreSeagrass = '$mainSite/data/inshore/sav-beds.geojson';
+  static const String inshoreBoatRamps = '$mainSite/data/inshore/boat-ramps.geojson';
+  static const String inshoreShellBottom = '$mainSite/data/inshore/shell-bottom.geojson';
+
+  // Inlet endpoints
+  static const String inletBase = 'https://inlet.skeetercast.com';
+  static const String inletsConfig = '$mainSite/data/inlets_config.json';
+  static const String inletTides = '$mainSite/data/nc_inlet_tides.json';
+  static const String inletWinds = '$mainSite/data/inlet_winds.json';
+  static const String waveData = '$mainSite/data/skeeterwave.json';
+  static String channelSurvey(String inletId) => '$mainSite/data/channel_surveys/$inletId.json';
+  static const String channelSurveySummary = '$mainSite/data/channel_surveys/summary.json';
+
   // Static content
   static const String weatherVideo = '$mainSite/videos/weather_latest.mp4';
   static const String captainSteveChat = '$mainSite/captain-steve';
