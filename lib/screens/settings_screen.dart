@@ -4,6 +4,9 @@ import '../providers/theme_provider.dart';
 import '../services/auth_service.dart';
 import 'login_screen.dart';
 import 'subscription_screen.dart';
+import 'terms_of_service_screen.dart';
+import 'privacy_policy_screen.dart';
+import 'account_settings_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -98,14 +101,19 @@ class SettingsScreen extends StatelessWidget {
                       context: context,
                       applicationName: 'SkeeterCast',
                       applicationVersion: '1.0.0',
-                      applicationIcon: Icon(
-                        Icons.sailing,
-                        size: 48,
-                        color: Theme.of(context).colorScheme.primary,
+                      applicationIcon: Image.asset(
+                        'assets/images/logo_192.png',
+                        height: 64,
+                        width: 64,
                       ),
                       children: [
                         const Text(
                           'Your AI-powered fishing and weather companion for North Carolina waters.',
+                        ),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'Contact: support@skeetercast.com',
+                          style: TextStyle(fontSize: 12),
                         ),
                       ],
                     );
@@ -120,7 +128,9 @@ class SettingsScreen extends StatelessWidget {
                   title: const Text('Terms of Service'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () {
-                    // TODO: Open terms URL
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const TermsOfServiceScreen()),
+                    );
                   },
                 ),
                 const Divider(height: 1),
@@ -132,7 +142,9 @@ class SettingsScreen extends StatelessWidget {
                   title: const Text('Privacy Policy'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () {
-                    // TODO: Open privacy URL
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const PrivacyPolicyScreen()),
+                    );
                   },
                 ),
               ],
@@ -170,6 +182,27 @@ class SettingsScreen extends StatelessWidget {
               ),
               title: Text(authService.email ?? 'User'),
               subtitle: Text('Tier: ${_formatTier(authService.tier)}'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const AccountSettingsScreen()),
+                );
+              },
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: Icon(
+                Icons.settings,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              title: const Text('Account Settings'),
+              subtitle: const Text('Profile, security, and more'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const AccountSettingsScreen()),
+                );
+              },
             ),
             const Divider(height: 1),
             ListTile(

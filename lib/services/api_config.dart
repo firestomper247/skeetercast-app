@@ -15,6 +15,9 @@ class ApiConfig {
   static const String register = '$authBase/api/register';
   static const String refreshToken = '$authBase/api/refresh';
   static const String userProfile = '$authBase/api/profile';
+  static const String changePassword = '$authBase/api/change-password';
+  static const String resendVerification = '$authBase/api/resend-verification';
+  static const String deleteAccount = '$authBase/api/account';
   static const String authHealth = '$authBase/api/health';
 
   // Ocean/Fishing endpoints
@@ -48,6 +51,8 @@ class ApiConfig {
   // Forecast endpoints (full weather data)
   static String forecastByCity(String city) => '$mainSite/api/forecast/city/$city';
   static String forecastByZipcode(String zip) => '$mainSite/api/forecast/zipcode/$zip';
+  static String forecastByCoords(double lat, double lon) =>
+      '$mainSite/api/forecast/coords?lat=$lat&lon=$lon';
   static String warningsByLocation(double lat, double lon) =>
       '$radarBase/api/warnings/location?lat=$lat&lon=$lon';
 
@@ -55,12 +60,39 @@ class ApiConfig {
   static const String savedCities = '$authBase/api/saved-cities';
   static String deleteSavedCity(int cityId) => '$authBase/api/saved-cities/$cityId';
 
+  // Buddies/Friends endpoints
+  static const String friends = '$authBase/api/friends';
+  static const String friendsPending = '$authBase/api/friends/pending';
+  static const String friendsRequest = '$authBase/api/friends/request';
+  static String friendsAccept(int requestId) => '$authBase/api/friends/accept/$requestId';
+  static String friendsReject(int requestId) => '$authBase/api/friends/reject/$requestId';
+  static String friendsDelete(int friendId) => '$authBase/api/friends/$friendId';
+
+  // Messages endpoints
+  static String messages(int friendId) => '$authBase/api/messages/$friendId';
+  static String messagesLocation(int friendId) => '$authBase/api/messages/$friendId/location';
+  static String messagesHookup(int friendId) => '$authBase/api/messages/$friendId/hookup';
+  static const String messagesUnread = '$authBase/api/messages/unread';
+
+  // Field Report/Observations endpoints
+  static const String observations = '$authBase/api/observations';
+  static const String observationsQuick = '$authBase/api/observations/quick';
+  static const String observationsMine = '$authBase/api/observations/mine';
+
+  // Device Token endpoints (push notifications)
+  static const String deviceToken = '$authBase/api/device-token';
+  static String deleteDeviceToken(String token) => '$authBase/api/device-token/$token';
+
   // User Fishing Spots endpoints
   static const String userSpots = '$authBase/api/spots';
   static String deleteSpot(int spotId) => '$authBase/api/spots/$spotId';
 
-  // SSH Contours (GeoJSON)
-  static const String sshContours = '$oceanBase/api/ocean/latest-ssh';
+  // SSH Anomaly Contours (GeoJSON) - shows warm/cold eddies
+  static const String sshContours = '$oceanBase/api/ocean/ssh-anomaly';
+
+  // Offshore forecast (weather + waves)
+  static String offshoreForecast(double lat, double lon) =>
+      '$oceanBase/api/ocean/offshore-forecast?lat=${lat.toStringAsFixed(4)}&lon=${lon.toStringAsFixed(4)}';
 
   // Inshore endpoints
   static String inshoreConditions(double lat, double lon) =>

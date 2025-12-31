@@ -119,6 +119,19 @@ class OceanService {
     return null;
   }
 
+  /// Fetch offshore forecast (weather + waves) for a location
+  Future<Map<String, dynamic>?> getOffshoreForecast(double lat, double lon) async {
+    try {
+      final response = await _api.get(ApiConfig.offshoreForecast(lat, lon));
+      if (response.statusCode == 200) {
+        return response.data;
+      }
+    } catch (e) {
+      // Return null on error
+    }
+    return null;
+  }
+
   /// Get user's saved fishing spots
   Future<List<Map<String, dynamic>>> getUserSpots() async {
     try {

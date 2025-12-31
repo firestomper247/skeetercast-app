@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'api_service.dart';
 import 'api_config.dart';
+import 'notification_service.dart';
 
 /// Authentication service for SkeeterCast
 /// Handles login, registration, and user session
@@ -62,6 +63,10 @@ class AuthService extends ChangeNotifier {
         _username = userData['username'] ?? username;
         _email = userData['email'];
         _tier = userData['tier'] ?? 'free';
+
+        // Register device for push notifications
+        await NotificationService.instance.registerToken();
+
         notifyListeners();
         return true;
       }
@@ -92,6 +97,9 @@ class AuthService extends ChangeNotifier {
   }
   
   Future<void> logout() async {
+    // Unregister device from push notifications
+    await NotificationService.instance.unregisterToken();
+
     await _api.clearTokens();
     _isLoggedIn = false;
     _username = null;
@@ -116,6 +124,121 @@ class AuthService extends ChangeNotifier {
     } catch (e) {
       debugPrint('Fetch profile error: $e');
       rethrow;
+    }
+  }
+
+  /// Get full profile data
+  Future<Map<String, dynamic>?> getProfile() async {
+    try {
+      final response = await _api.get(ApiConfig.userProfile);
+      if (response.statusCode == 200) {
+        return response.data['user'] as Map<String, dynamic>?;
+      }
+    } catch (e) {
+      debugPrint('Get profile error: $e');
+    }
+    return null;
+  }
+
+  /// Update user profile (username, email)
+  Future<Map<String, dynamic>> updateProfile({
+    String? username,
+    String? email,
+  }) async {
+    try {
+      final response = await _api.put(
+        ApiConfig.userProfile,
+        data: {
+          if (username != null) 'username': username,
+          if (email != null) 'email': email,
+        },
+      );
+
+      if (response.statusCode == 200) {
+        // Update local state
+        if (username != null) _username = username;
+        if (email != null) _email = email;
+        notifyListeners();
+        return {
+          'success': true,
+          'email_changed': response.data['email_changed'] ?? false,
+        };
+      }
+      return {
+        'success': false,
+        'message': response.data['message'] ?? 'Failed to update profile',
+      };
+    } catch (e) {
+      debugPrint('Update profile error: $e');
+      return {'success': false, 'message': 'Error updating profile'};
+    }
+  }
+
+  /// Change password
+  Future<Map<String, dynamic>> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    try {
+      final response = await _api.post(
+        ApiConfig.changePassword,
+        data: {
+          'current_password': currentPassword,
+          'new_password': newPassword,
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return {'success': true};
+      }
+      return {
+        'success': false,
+        'message': response.data['message'] ?? 'Failed to change password',
+      };
+    } catch (e) {
+      debugPrint('Change password error: $e');
+      return {'success': false, 'message': 'Error changing password'};
+    }
+  }
+
+  /// Resend email verification
+  Future<Map<String, dynamic>> resendVerification() async {
+    try {
+      final response = await _api.post(ApiConfig.resendVerification);
+
+      if (response.statusCode == 200) {
+        return {'success': true};
+      }
+      return {
+        'success': false,
+        'message': response.data['message'] ?? 'Failed to send verification email',
+      };
+    } catch (e) {
+      debugPrint('Resend verification error: $e');
+      return {'success': false, 'message': 'Error sending verification email'};
+    }
+  }
+
+  /// Delete account
+  Future<Map<String, dynamic>> deleteAccount({required String password}) async {
+    try {
+      final response = await _api.delete(
+        ApiConfig.deleteAccount,
+        data: {'password': password},
+      );
+
+      if (response.statusCode == 200) {
+        // Clear all local data
+        await logout();
+        return {'success': true};
+      }
+      return {
+        'success': false,
+        'message': response.data['message'] ?? 'Failed to delete account',
+      };
+    } catch (e) {
+      debugPrint('Delete account error: $e');
+      return {'success': false, 'message': 'Error deleting account'};
     }
   }
 }

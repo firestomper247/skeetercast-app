@@ -45,6 +45,18 @@ dependencies:
   webview_flutter: ^4.10.0
   geolocator: ^13.0.2
 
+  # Firebase & Notifications
+  firebase_core: ^3.8.1
+  firebase_messaging: ^15.1.6
+  flutter_local_notifications: ^18.0.1
+
+  # Offline caching
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+  path_provider: ^2.1.5
+  connectivity_plus: ^6.1.1
+  flutter_map_tile_caching: ^10.1.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -55,6 +67,23 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^5.0.0
+  flutter_launcher_icons: ^0.14.2
+  flutter_native_splash: ^2.4.4
+
+# App icon configuration
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/images/logo_hq.png"
+  adaptive_icon_background: "#1a237e"
+  adaptive_icon_foreground: "assets/images/logo_hq.png"
+
+# Splash screen configuration
+flutter_native_splash:
+  color: "#000000"
+  image: assets/images/logo_hq.png
+  android_12:
+    color: "#000000"
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -67,10 +96,8 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
-  # To add assets to your application, add an assets section, like this:
-  # assets:
-  #   - images/a_dot_burr.jpeg
-  #   - images/a_dot_ham.jpeg
+  assets:
+    - assets/images/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

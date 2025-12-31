@@ -4,8 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:http/http.dart' as http;
+import 'package:provider/provider.dart';
 import '../services/radar_service.dart';
 import '../services/api_config.dart';
+import '../services/auth_service.dart';
+import '../config/tier_config.dart';
+import '../widgets/upgrade_prompt.dart';
 
 class RadarScreen extends StatefulWidget {
   const RadarScreen({super.key});
@@ -662,6 +666,10 @@ class _RadarScreenState extends State<RadarScreen> {
   }
 
   Widget _buildLayerControls(ThemeData theme) {
+    final authService = Provider.of<AuthService>(context);
+    final userTier = authService.tier;
+    final hasPlusAccess = hasAccess(userTier, 'plus');
+
     return Container(
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
@@ -689,26 +697,32 @@ class _RadarScreenState extends State<RadarScreen> {
             icon: Icons.satellite_alt,
             label: 'Satellite',
             color: Colors.blue,
-            isActive: _showSatellite,
-            onTap: () {
-              setState(() => _showSatellite = !_showSatellite);
-              if (_showSatellite && _satelliteUrl == null) {
-                _loadSatellite();
-              }
-            },
+            isActive: _showSatellite && hasPlusAccess,
+            isLocked: !hasPlusAccess,
+            onTap: hasPlusAccess
+                ? () {
+                    setState(() => _showSatellite = !_showSatellite);
+                    if (_showSatellite && _satelliteUrl == null) {
+                      _loadSatellite();
+                    }
+                  }
+                : () => _showUpgradePrompt('Satellite Imagery', 'plus'),
           ),
           _buildLayerToggle(
             theme,
             icon: Icons.flash_on,
             label: 'Lightning',
             color: Colors.yellow.shade700,
-            isActive: _showLightning,
-            onTap: () {
-              setState(() => _showLightning = !_showLightning);
-              if (_showLightning && _lightningStrikes.isEmpty) {
-                _loadLightning();
-              }
-            },
+            isActive: _showLightning && hasPlusAccess,
+            isLocked: !hasPlusAccess,
+            onTap: hasPlusAccess
+                ? () {
+                    setState(() => _showLightning = !_showLightning);
+                    if (_showLightning && _lightningStrikes.isEmpty) {
+                      _loadLightning();
+                    }
+                  }
+                : () => _showUpgradePrompt('Lightning Data', 'plus'),
           ),
           _buildLayerToggle(
             theme,
@@ -723,6 +737,14 @@ class _RadarScreenState extends State<RadarScreen> {
     );
   }
 
+  void _showUpgradePrompt(String featureName, String minTier) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => UpgradeInfoSheet(targetTier: minTier),
+    );
+  }
+
   Widget _buildLayerToggle(
     ThemeData theme, {
     required IconData icon,
@@ -730,6 +752,7 @@ class _RadarScreenState extends State<RadarScreen> {
     required Color color,
     required bool isActive,
     required VoidCallback onTap,
+    bool isLocked = false,
   }) {
     return InkWell(
       onTap: onTap,
@@ -739,18 +762,26 @@ class _RadarScreenState extends State<RadarScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              icon,
+              isLocked ? Icons.lock : icon,
               size: 18,
-              color: isActive ? color : theme.colorScheme.onSurfaceVariant,
+              color: isLocked
+                  ? Colors.amber
+                  : (isActive ? color : theme.colorScheme.onSurfaceVariant),
             ),
             const SizedBox(width: 4),
             Text(
               label,
               style: theme.textTheme.labelSmall?.copyWith(
-                color: isActive ? color : theme.colorScheme.onSurfaceVariant,
+                color: isLocked
+                    ? Colors.amber
+                    : (isActive ? color : theme.colorScheme.onSurfaceVariant),
                 fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
               ),
             ),
+            if (isLocked) ...[
+              const SizedBox(width: 2),
+              const Text('➕', style: TextStyle(fontSize: 8)),
+            ],
           ],
         ),
       ),

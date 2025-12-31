@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/forecast_service.dart';
 import '../services/auth_service.dart';
+import '../services/location_service.dart';
 
 class CitiesScreen extends StatefulWidget {
   const CitiesScreen({super.key});
@@ -10,7 +11,7 @@ class CitiesScreen extends StatefulWidget {
   State<CitiesScreen> createState() => _CitiesScreenState();
 }
 
-class _CitiesScreenState extends State<CitiesScreen> with SingleTickerProviderStateMixin {
+class _CitiesScreenState extends State<CitiesScreen> with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   final ForecastService _forecastService = ForecastService();
   final TextEditingController _searchController = TextEditingController();
 
@@ -22,19 +23,24 @@ class _CitiesScreenState extends State<CitiesScreen> with SingleTickerProviderSt
   bool _isLoading = false;
   bool _isLoadingSteve = false;
   bool _isSavingCity = false;
+  bool _isDetectingLocation = false;
+  bool _hasCheckedLocationOnResume = false;
   String? _error;
 
   late TabController _tabController;
+  AuthService? _authService;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
+    WidgetsBinding.instance.addObserver(this); // Listen for app lifecycle
     // Load saved cities after frame is built (auth may not be ready yet)
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadSavedCities();
       // Listen for auth changes
-      Provider.of<AuthService>(context, listen: false).addListener(_onAuthChanged);
+      _authService = Provider.of<AuthService>(context, listen: false);
+      _authService!.addListener(_onAuthChanged);
     });
   }
 
@@ -44,8 +50,34 @@ class _CitiesScreenState extends State<CitiesScreen> with SingleTickerProviderSt
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    // Check location when app comes back to foreground
+    if (state == AppLifecycleState.resumed && !_hasCheckedLocationOnResume) {
+      _hasCheckedLocationOnResume = true;
+      _checkLocationOnResume();
+      // Reset flag after a delay so we can check again later
+      Future.delayed(const Duration(minutes: 5), () {
+        if (mounted) _hasCheckedLocationOnResume = false;
+      });
+    }
+  }
+
+  Future<void> _checkLocationOnResume() async {
+    // Only check if we should (respects 5-min interval)
+    if (!await LocationService.instance.shouldCheckLocation()) return;
+
+    // Check if user has moved significantly
+    if (await LocationService.instance.hasMovedSignificantly()) {
+      debugPrint('User has moved significantly, updating location...');
+      _detectLocation();
+    }
+  }
+
+  @override
   void dispose() {
-    Provider.of<AuthService>(context, listen: false).removeListener(_onAuthChanged);
+    WidgetsBinding.instance.removeObserver(this);
+    _authService?.removeListener(_onAuthChanged);
     _searchController.dispose();
     _tabController.dispose();
     super.dispose();
@@ -58,13 +90,65 @@ class _CitiesScreenState extends State<CitiesScreen> with SingleTickerProviderSt
     final cities = await _forecastService.getSavedCities();
     setState(() => _savedCities = cities);
 
-    // Auto-load primary city
-    if (cities.isNotEmpty && _forecastData == null) {
-      final primary = cities.firstWhere(
-        (c) => c['is_primary'] == true,
-        orElse: () => cities.first,
+    // Always try to detect current location first on initial load
+    if (_forecastData == null) {
+      _detectLocation();
+    }
+  }
+
+  Future<void> _detectLocation() async {
+    setState(() {
+      _isDetectingLocation = true;
+      _error = null;
+    });
+
+    try {
+      final position = await LocationService.instance.getCurrentPosition();
+      if (position == null) {
+        setState(() {
+          _isDetectingLocation = false;
+          _error = 'Could not get your location. Please enable location services or search manually.';
+        });
+        return;
+      }
+
+      // Get forecast for coordinates
+      setState(() {
+        _isLoading = true;
+        _isDetectingLocation = false;
+      });
+
+      final data = await _forecastService.getForecastByCoords(
+        position.latitude,
+        position.longitude,
       );
-      _loadSavedCity(primary);
+
+      if (data != null && data['has_forecast'] == true) {
+        setState(() {
+          _forecastData = data;
+          _isLoading = false;
+        });
+        // Save city position so we can detect if user moves away
+        if (data['lat'] != null && data['lon'] != null) {
+          LocationService.instance.saveCityPosition(
+            data['lat'].toDouble(),
+            data['lon'].toDouble(),
+          );
+        }
+        _fetchAlerts(data['lat'], data['lon']);
+        _fetchSteveForecast(data['city'], data);
+      } else {
+        setState(() {
+          _error = 'Could not get forecast for your location. Try searching manually.';
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _isDetectingLocation = false;
+        _isLoading = false;
+        _error = 'Error detecting location: $e';
+      });
     }
   }
 
@@ -88,6 +172,13 @@ class _CitiesScreenState extends State<CitiesScreen> with SingleTickerProviderSt
           _forecastData = data;
           _isLoading = false;
         });
+        // Save city position for location tracking
+        if (data['lat'] != null && data['lon'] != null) {
+          LocationService.instance.saveCityPosition(
+            data['lat'].toDouble(),
+            data['lon'].toDouble(),
+          );
+        }
         _fetchAlerts(data['lat'], data['lon']);
         _fetchSteveForecast(city['city_name'] ?? data['city'], data);
       } else {
@@ -121,6 +212,13 @@ class _CitiesScreenState extends State<CitiesScreen> with SingleTickerProviderSt
           _forecastData = data;
           _isLoading = false;
         });
+        // Save city position for location tracking
+        if (data['lat'] != null && data['lon'] != null) {
+          LocationService.instance.saveCityPosition(
+            data['lat'].toDouble(),
+            data['lon'].toDouble(),
+          );
+        }
         _fetchAlerts(data['lat'], data['lon']);
         _fetchSteveForecast(data['city'], data);
       } else {
@@ -238,6 +336,19 @@ class _CitiesScreenState extends State<CitiesScreen> with SingleTickerProviderSt
     }
   }
 
+  String _degreesToCardinal(double degrees) {
+    const directions = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE',
+                        'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+    final index = ((degrees + 11.25) / 22.5).floor() % 16;
+    return directions[index];
+  }
+
+  bool _isCurrentlyNight() {
+    final hour = DateTime.now().hour;
+    // Night is between 7 PM (19) and 6 AM (6)
+    return hour >= 19 || hour < 6;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -245,7 +356,12 @@ class _CitiesScreenState extends State<CitiesScreen> with SingleTickerProviderSt
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Cities'),
+        title: Image.asset(
+          'assets/images/logo_full.png',
+          height: 56,
+          fit: BoxFit.contain,
+        ),
+        toolbarHeight: 70,
         centerTitle: true,
         bottom: _forecastData != null
             ? TabBar(
@@ -421,20 +537,39 @@ class _CitiesScreenState extends State<CitiesScreen> with SingleTickerProviderSt
 
     if (_forecastData == null) {
       return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.location_city, size: 64, color: theme.colorScheme.primary),
-            const SizedBox(height: 16),
-            Text('Search for a city', style: theme.textTheme.titleLarge),
-            const SizedBox(height: 8),
-            Text(
-              'Enter a city name or NC zipcode',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.location_city, size: 64, color: theme.colorScheme.primary),
+              const SizedBox(height: 16),
+              Text('Search for a city', style: theme.textTheme.titleLarge),
+              const SizedBox(height: 8),
+              Text(
+                'Enter a city name or NC zipcode',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                textAlign: TextAlign.center,
               ),
-            ),
-          ],
+              const SizedBox(height: 24),
+              if (_isDetectingLocation)
+                const Column(
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 12),
+                    Text('Detecting your location...'),
+                  ],
+                )
+              else
+                FilledButton.icon(
+                  onPressed: _detectLocation,
+                  icon: const Icon(Icons.my_location),
+                  label: const Text('Use My Location'),
+                ),
+            ],
+          ),
         ),
       );
     }
@@ -460,13 +595,36 @@ class _CitiesScreenState extends State<CitiesScreen> with SingleTickerProviderSt
     final humidity = obs?['humidity_pct'] != null
         ? (obs!['humidity_pct'] as num).round()
         : (current?['humidity_pct'] as num?)?.round();
-    final windSpeed = obs?['wind_speed_mph'] != null
-        ? '${(obs!['wind_speed_mph'] as num).round()} mph'
-        : current?['wind_speed'] ?? 'N/A';
-    final windDir = current?['wind_direction'] ?? '';
+    // Use observation wind data if available, otherwise use hourly
+    String windSpeed;
+    String windDir;
+    if (obs?['wind_speed_mph'] != null) {
+      final speed = (obs!['wind_speed_mph'] as num).round();
+      if (speed == 0) {
+        windSpeed = 'Calm';
+        windDir = '';
+      } else {
+        windSpeed = '$speed mph';
+        final deg = obs['wind_direction'] as num?;
+        windDir = deg != null ? _degreesToCardinal(deg.toDouble()) : '';
+      }
+    } else {
+      final hourlyWind = current?['wind_speed'] ?? 'N/A';
+      // Check if hourly says calm or 0
+      if (hourlyWind == '0 mph' || hourlyWind.toString().toLowerCase().contains('calm')) {
+        windSpeed = 'Calm';
+        windDir = '';
+      } else {
+        windSpeed = hourlyWind;
+        windDir = current?['wind_direction'] ?? '';
+      }
+    }
     final observationTime = obs?['observation_time'] as String?;
     final stationName = obs?['station_name'] as String?;
-    final dewpoint = current?['dewpoint_f']?.round();
+    // Use observation dewpoint if available, otherwise hourly
+    final dewpoint = obs?['dewpoint_f'] != null
+        ? (obs!['dewpoint_f'] as num).round()
+        : current?['dewpoint_f']?.round();
     final precip = current?['precip_probability'] ?? 0;
 
     return SingleChildScrollView(
@@ -499,7 +657,7 @@ class _CitiesScreenState extends State<CitiesScreen> with SingleTickerProviderSt
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      _getWeatherIcon(conditions),
+                      _getWeatherIcon(conditions, isNight: _isCurrentlyNight()),
                       style: const TextStyle(fontSize: 64),
                     ),
                     const SizedBox(width: 16),
@@ -535,7 +693,7 @@ class _CitiesScreenState extends State<CitiesScreen> with SingleTickerProviderSt
                   children: [
                     _buildDetailChip('💧 ${humidity ?? 'N/A'}%', 'Humidity'),
                     _buildDetailChip('💨 $windDir $windSpeed', 'Wind'),
-                    _buildDetailChip('🌡️ ${dewpoint ?? 'N/A'}°', 'Dewpoint'),
+                    _buildDetailChip('🌡️ ${dewpoint ?? 'N/A'}°F', 'Dewpoint'),
                     _buildDetailChip('☔ $precip%', 'Precip'),
                   ],
                 ),

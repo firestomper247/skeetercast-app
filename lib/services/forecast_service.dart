@@ -33,6 +33,19 @@ class ForecastService {
     return null;
   }
 
+  /// Get full weather forecast by GPS coordinates
+  Future<Map<String, dynamic>?> getForecastByCoords(double lat, double lon) async {
+    try {
+      final response = await _api.get(ApiConfig.forecastByCoords(lat, lon));
+      if (response.statusCode == 200) {
+        return response.data;
+      }
+    } catch (e) {
+      // Return null on error
+    }
+    return null;
+  }
+
   /// Smart search - detects if input is zipcode or city name
   Future<Map<String, dynamic>?> searchLocation(String query) async {
     final trimmed = query.trim();

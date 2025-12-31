@@ -118,7 +118,7 @@ class ApiService {
     return await _dio.put(url, data: data);
   }
   
-  Future<Response> delete(String url) async {
-    return await _dio.delete(url);
+  Future<Response> delete(String url, {dynamic data}) async {
+    return await _dio.delete(url, data: data);
   }
 }

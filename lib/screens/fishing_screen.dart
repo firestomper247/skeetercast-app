@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:provider/provider.dart';
 import '../services/ocean_service.dart';
 import '../services/captain_steve_service.dart';
+import '../services/auth_service.dart';
+import '../config/tier_config.dart';
+import '../widgets/upgrade_prompt.dart';
 import 'inshore_map.dart';
 import 'inlet_map.dart';
 
@@ -46,9 +50,13 @@ class _FishingScreenState extends State<FishingScreen> with SingleTickerProvider
 
   // Point data popup
   Map<String, dynamic>? _pointData;
+  Map<String, dynamic>? _offshoreForecast;
   LatLng? _selectedPoint;
+  bool _markerTapped = false; // Prevent map tap when marker is tapped
   bool _isLoadingPoint = false;
+  bool _isLoadingForecast = false;
   bool _isSavingSpot = false;
+  int _selectedForecastTab = 0; // 0=Current, 1=Weather, 2=Waves
 
   @override
   void initState() {
@@ -131,24 +139,40 @@ class _FishingScreenState extends State<FishingScreen> with SingleTickerProvider
   }
 
   Future<void> _onMapTap(TapPosition tapPosition, LatLng point) async {
+    // Skip map tap if a marker was just tapped
+    if (_markerTapped) {
+      _markerTapped = false;
+      return;
+    }
+
     setState(() {
       _selectedPoint = point;
       _isLoadingPoint = true;
+      _isLoadingForecast = true;
       _pointData = null;
+      _offshoreForecast = null;
+      _selectedForecastTab = 0;
     });
 
+    // Fetch both current conditions and forecast in parallel
     try {
-      final data = await _oceanService.getPointData(point.latitude, point.longitude);
+      final results = await Future.wait([
+        _oceanService.getPointData(point.latitude, point.longitude),
+        _oceanService.getOffshoreForecast(point.latitude, point.longitude),
+      ]);
       if (mounted) {
         setState(() {
-          _pointData = data;
+          _pointData = results[0] as Map<String, dynamic>?;
+          _offshoreForecast = results[1] as Map<String, dynamic>?;
           _isLoadingPoint = false;
+          _isLoadingForecast = false;
         });
       }
     } catch (e) {
       if (mounted) {
         setState(() {
           _isLoadingPoint = false;
+          _isLoadingForecast = false;
         });
       }
     }
@@ -208,21 +232,26 @@ class _FishingScreenState extends State<FishingScreen> with SingleTickerProvider
   }
 
   void _showStevePickInfo(Map<String, dynamic> pick) {
-    final theme = Theme.of(context);
-    final score = pick['score'] as int? ?? 0;
-    final grade = pick['grade'] ?? '';
-    final zone = pick['zone'] ?? 'Unknown';
-    final depth = pick['depth_ft'];
-    final analysis = pick['analysis'] as String?;
-    final reasons = pick['reasons'] as List<dynamic>?;
+    debugPrint('_showStevePickInfo called with: $pick');
 
-    final color = score >= 75
-        ? Colors.green
-        : score >= 60
-            ? Colors.orange
-            : Colors.red;
+    try {
+      final theme = Theme.of(context);
+      final score = (pick['score'] as num?)?.toInt() ?? 0;
+      final grade = pick['grade']?.toString() ?? '';
+      final zone = pick['zone']?.toString() ?? 'Unknown';
+      final depth = pick['depth_ft'];
+      final analysis = pick['analysis']?.toString();
+      final reasons = pick['reasons'] as List<dynamic>?;
+      final lat = (pick['lat'] as num?)?.toDouble() ?? 0.0;
+      final lon = (pick['lon'] as num?)?.toDouble() ?? 0.0;
 
-    showModalBottomSheet(
+      final color = score >= 75
+          ? Colors.green
+          : score >= 60
+              ? Colors.orange
+              : Colors.red;
+
+      showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
@@ -305,7 +334,7 @@ class _FishingScreenState extends State<FishingScreen> with SingleTickerProvider
                               const Icon(Icons.location_on, size: 20),
                               const SizedBox(height: 4),
                               Text(
-                                '${pick['lat'].toStringAsFixed(2)}N\n${pick['lon'].abs().toStringAsFixed(2)}W',
+                                '${lat.toStringAsFixed(2)}N\n${lon.abs().toStringAsFixed(2)}W',
                                 textAlign: TextAlign.center,
                                 style: theme.textTheme.bodySmall,
                               ),
@@ -367,7 +396,7 @@ class _FishingScreenState extends State<FishingScreen> with SingleTickerProvider
                       onPressed: () {
                         Navigator.pop(ctx);
                         _mapController.move(
-                          LatLng(pick['lat'], pick['lon']),
+                          LatLng(lat, lon),
                           10,
                         );
                       },
@@ -380,6 +409,9 @@ class _FishingScreenState extends State<FishingScreen> with SingleTickerProvider
         );
       },
     );
+    } catch (e) {
+      debugPrint('Error showing Steve Pick info: $e');
+    }
   }
 
   void _showSpotInfo(Map<String, dynamic> spot) {
@@ -585,15 +617,54 @@ class _FishingScreenState extends State<FishingScreen> with SingleTickerProvider
   }
 
   Widget _buildTabContent(ThemeData theme) {
+    final authService = Provider.of<AuthService>(context);
+    final userTier = authService.tier;
+
     switch (_selectedMode) {
       case 1:
+        // Inshore requires Premium
+        if (!canAccessFeature(userTier, Features.inshorePage)) {
+          return const UpgradePromptScreen(
+            featureName: 'Inshore Conditions',
+            minTier: 'premium',
+            description: 'Get real-time inshore fishing conditions, water temperatures, and more.',
+            icon: Icons.water,
+          );
+        }
         return const InshoreMap();
       case 3:
+        // Inlets requires Premium
+        if (!canAccessFeature(userTier, Features.inletConditions)) {
+          return const UpgradePromptScreen(
+            featureName: 'Inlet Conditions',
+            minTier: 'premium',
+            description: 'Access inlet conditions, wave forecasts, tide charts, and depth surveys.',
+            icon: Icons.anchor,
+          );
+        }
         return const InletMap();
       case 2:
+        // Strike Times requires Premium
+        if (!canAccessFeature(userTier, Features.strikeTimes)) {
+          return const UpgradePromptScreen(
+            featureName: 'Strike Times',
+            minTier: 'premium',
+            description: 'See the best times to fish based on solunar theory, moon phases, and tides.',
+            icon: Icons.schedule,
+          );
+        }
         return _buildStrikeTimesContent(theme);
       default:
-        return _buildOffshoreContent(theme);
+        // Offshore Fishing Map requires Premium
+        if (!canAccessFeature(userTier, Features.fishingViewMap)) {
+          return const UpgradePromptScreen(
+            featureName: 'Offshore Fishing Map',
+            minTier: 'premium',
+            description: 'View SST, chlorophyll, currents, and other ocean data layers for offshore fishing.',
+            icon: Icons.waves,
+          );
+        }
+        return _buildOffshoreContent(theme, userTier);
     }
   }
 
@@ -627,7 +698,9 @@ class _FishingScreenState extends State<FishingScreen> with SingleTickerProvider
     );
   }
 
-  Widget _buildOffshoreContent(ThemeData theme) {
+  Widget _buildOffshoreContent(ThemeData theme, String? userTier) {
+    final canViewStevePicks = canAccessFeature(userTier, Features.fishingCaptainStevePicks);
+    final canSaveSpots = canAccessFeature(userTier, Features.fishingMySpots);
     return Stack(
       children: [
         // Map
@@ -675,8 +748,8 @@ class _FishingScreenState extends State<FishingScreen> with SingleTickerProvider
                 polylines: _buildSSHContours(),
               ),
 
-            // Steve's Picks
-            if (_showStevePicks && _stevePicks.isNotEmpty)
+            // Steve's Picks (Pro tier only)
+            if (_showStevePicks && _stevePicks.isNotEmpty && canViewStevePicks)
               MarkerLayer(
                 markers: _stevePicks.map((pick) {
                   final score = pick['score'] as int? ?? 0;
@@ -687,15 +760,24 @@ class _FishingScreenState extends State<FishingScreen> with SingleTickerProvider
                           : Colors.red;
                   return Marker(
                     point: LatLng(pick['lat'], pick['lon']),
-                    width: 36,
-                    height: 36,
+                    width: 44,
+                    height: 44,
                     child: GestureDetector(
-                      onTap: () => _showStevePickInfo(pick),
+                      behavior: HitTestBehavior.opaque,
+                      onTapDown: (_) {
+                        _markerTapped = true;
+                      },
+                      onTap: () {
+                        debugPrint('Steve Pick tapped: ${pick['zone']} score=${pick['score']}');
+                        _showStevePickInfo(pick);
+                      },
                       child: Container(
+                        width: 44,
+                        height: 44,
                         decoration: BoxDecoration(
                           color: color,
                           shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 2),
+                          border: Border.all(color: Colors.white, width: 3),
                           boxShadow: [
                             BoxShadow(
                               color: Colors.black.withOpacity(0.3),
@@ -709,7 +791,7 @@ class _FishingScreenState extends State<FishingScreen> with SingleTickerProvider
                             style: const TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.bold,
-                              fontSize: 12,
+                              fontSize: 14,
                             ),
                           ),
                         ),
@@ -731,7 +813,11 @@ class _FishingScreenState extends State<FishingScreen> with SingleTickerProvider
                     width: 40,
                     height: 40,
                     child: GestureDetector(
-                      onTap: () => _showSpotInfo(spot),
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () {
+                        _markerTapped = true;
+                        _showSpotInfo(spot);
+                      },
                       child: const Icon(
                         Icons.star,
                         color: Colors.orange,
@@ -770,7 +856,7 @@ class _FishingScreenState extends State<FishingScreen> with SingleTickerProvider
 
         // Map controls
         Positioned(
-          bottom: _selectedPoint != null ? 220 : 100,
+          bottom: _selectedPoint != null ? 250 : 100,
           right: 8,
           child: _buildMapControls(theme),
         ),
@@ -840,6 +926,10 @@ class _FishingScreenState extends State<FishingScreen> with SingleTickerProvider
       return const SizedBox.shrink();
     }
 
+    final authService = Provider.of<AuthService>(context);
+    final userTier = authService.tier;
+    final canViewStevePicks = canAccessFeature(userTier, Features.fishingCaptainStevePicks);
+
     return Container(
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
@@ -884,8 +974,11 @@ class _FishingScreenState extends State<FishingScreen> with SingleTickerProvider
             icon: Icons.anchor,
             label: "Steve's Picks",
             color: Colors.teal,
-            isActive: _showStevePicks,
-            onTap: () => setState(() => _showStevePicks = !_showStevePicks),
+            isActive: _showStevePicks && canViewStevePicks,
+            onTap: canViewStevePicks
+                ? () => setState(() => _showStevePicks = !_showStevePicks)
+                : () => _showUpgradePrompt('Captain Steve Picks', 'pro'),
+            isLocked: !canViewStevePicks,
           ),
           _buildLayerToggle(
             theme,
@@ -900,6 +993,14 @@ class _FishingScreenState extends State<FishingScreen> with SingleTickerProvider
     );
   }
 
+  void _showUpgradePrompt(String featureName, String minTier) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => UpgradeInfoSheet(targetTier: minTier),
+    );
+  }
+
   Widget _buildLayerToggle(
     ThemeData theme, {
     required IconData icon,
@@ -907,6 +1008,7 @@ class _FishingScreenState extends State<FishingScreen> with SingleTickerProvider
     required Color color,
     required bool isActive,
     required VoidCallback onTap,
+    bool isLocked = false,
   }) {
     return InkWell(
       onTap: onTap,
@@ -916,18 +1018,26 @@ class _FishingScreenState extends State<FishingScreen> with SingleTickerProvider
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              icon,
+              isLocked ? Icons.lock : icon,
               size: 18,
-              color: isActive ? color : theme.colorScheme.onSurfaceVariant,
+              color: isLocked
+                  ? Colors.amber
+                  : (isActive ? color : theme.colorScheme.onSurfaceVariant),
             ),
             const SizedBox(width: 4),
             Text(
               label,
               style: theme.textTheme.labelSmall?.copyWith(
-                color: isActive ? color : theme.colorScheme.onSurfaceVariant,
+                color: isLocked
+                    ? Colors.amber
+                    : (isActive ? color : theme.colorScheme.onSurfaceVariant),
                 fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
               ),
             ),
+            if (isLocked) ...[
+              const SizedBox(width: 2),
+              const Text('🏆', style: TextStyle(fontSize: 10)),
+            ],
           ],
         ),
       ),
@@ -1000,28 +1110,17 @@ class _FishingScreenState extends State<FishingScreen> with SingleTickerProvider
             ),
             // Header
             Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Row(
                 children: [
                   Icon(Icons.location_on, color: theme.colorScheme.primary),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Ocean Data',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        Text(
-                          '${_selectedPoint!.latitude.toStringAsFixed(4)}N, ${_selectedPoint!.longitude.abs().toStringAsFixed(4)}W',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
+                    child: Text(
+                      '${_selectedPoint!.latitude.toStringAsFixed(4)}N, ${_selectedPoint!.longitude.abs().toStringAsFixed(4)}W',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ),
                   IconButton(
@@ -1031,25 +1130,27 @@ class _FishingScreenState extends State<FishingScreen> with SingleTickerProvider
                 ],
               ),
             ),
-            // Data content
-            if (_isLoadingPoint)
-              const Padding(
-                padding: EdgeInsets.all(24),
-                child: CircularProgressIndicator(),
-              )
-            else if (_pointData != null)
-              _buildPointDataContent(theme)
-            else
-              Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(
-                  'No ocean data available at this location',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
+            // Tab bar
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(8),
               ),
-
+              child: Row(
+                children: [
+                  _buildForecastTab(theme, 0, 'Current', Icons.water_drop),
+                  _buildForecastTab(theme, 1, 'Weather', Icons.cloud),
+                  _buildForecastTab(theme, 2, 'Waves', Icons.waves),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            // Tab content
+            SizedBox(
+              height: 210,
+              child: _buildForecastTabContent(theme),
+            ),
             // Save Spot button
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
@@ -1070,6 +1171,283 @@ class _FishingScreenState extends State<FishingScreen> with SingleTickerProvider
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildForecastTab(ThemeData theme, int index, String label, IconData icon) {
+    final isActive = _selectedForecastTab == index;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _selectedForecastTab = index),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: isActive ? theme.colorScheme.primary : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 16,
+                color: isActive ? theme.colorScheme.onPrimary : theme.colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+                  color: isActive ? theme.colorScheme.onPrimary : theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildForecastTabContent(ThemeData theme) {
+    switch (_selectedForecastTab) {
+      case 1:
+        return _buildWeatherForecastContent(theme);
+      case 2:
+        return _buildWaveForecastContent(theme);
+      default:
+        if (_isLoadingPoint) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (_pointData != null) {
+          return _buildPointDataContent(theme);
+        }
+        return Center(
+          child: Text(
+            'No data available',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        );
+    }
+  }
+
+  Widget _buildWeatherForecastContent(ThemeData theme) {
+    if (_isLoadingForecast) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    final weather = _offshoreForecast?['weather'] as Map<String, dynamic>?;
+    if (weather == null || weather.isEmpty) {
+      return Center(
+        child: Text(
+          'No weather forecast available',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      );
+    }
+
+    // Get current weather (hour 0)
+    final current = weather['0'] as Map<String, dynamic>?;
+    final hours = ['0', '6', '12', '18', '24', '36', '48'];
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Current weather card
+          if (current != null)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Colors.blue.shade400, Colors.blue.shade700],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                children: [
+                  const Text('Now', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                  Text(
+                    '${current['temperature_f']?.toStringAsFixed(0) ?? '--'}°F',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.air, color: Colors.white70, size: 16),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${current['wind_speed_kt']?.toStringAsFixed(0) ?? '--'} kt @ ${current['wind_direction_deg']?.toStringAsFixed(0) ?? '--'}°',
+                        style: const TextStyle(color: Colors.white, fontSize: 14),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          const SizedBox(height: 12),
+          // Forecast strip
+          Text('48-Hour Forecast', style: theme.textTheme.labelSmall),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 70,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: hours.length,
+              itemBuilder: (ctx, index) {
+                final hour = hours[index];
+                final data = weather[hour] as Map<String, dynamic>?;
+                if (data == null) return const SizedBox.shrink();
+
+                final isNow = hour == '0';
+                return Container(
+                  width: 60,
+                  margin: const EdgeInsets.only(right: 8),
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: isNow
+                        ? theme.colorScheme.primaryContainer
+                        : theme.colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        isNow ? 'Now' : '+${hour}h',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: isNow ? FontWeight.bold : FontWeight.normal,
+                        ),
+                      ),
+                      Text(
+                        '${data['temperature_f']?.toStringAsFixed(0) ?? '--'}°',
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                      Text(
+                        '${data['wind_speed_kt']?.toStringAsFixed(0) ?? '--'}kt',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWaveForecastContent(ThemeData theme) {
+    if (_isLoadingForecast) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    final waves = _offshoreForecast?['waves'] as Map<String, dynamic>?;
+    if (waves == null || waves.isEmpty) {
+      return Center(
+        child: Text(
+          'No wave forecast available',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      );
+    }
+
+    // Sort wave hours
+    final sortedHours = waves.keys.toList()
+      ..sort((a, b) => int.parse(a).compareTo(int.parse(b)));
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 4,
+          childAspectRatio: 0.85,
+          crossAxisSpacing: 8,
+          mainAxisSpacing: 8,
+        ),
+        itemCount: sortedHours.length > 8 ? 8 : sortedHours.length,
+        itemBuilder: (ctx, index) {
+          final hour = sortedHours[index];
+          final data = waves[hour] as Map<String, dynamic>;
+          final isNow = hour == '0';
+          final height = (data['wave_height_ft'] as num?)?.toDouble() ?? 0;
+
+          // Color based on wave height
+          Color waveColor;
+          if (height >= 8) {
+            waveColor = Colors.red;
+          } else if (height >= 5) {
+            waveColor = Colors.orange;
+          } else if (height >= 3) {
+            waveColor = Colors.yellow.shade700;
+          } else {
+            waveColor = Colors.green;
+          }
+
+          return Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [waveColor.withValues(alpha: 0.7), waveColor],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(8),
+              border: isNow ? Border.all(color: Colors.white, width: 2) : null,
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  isNow ? 'Now' : '+${hour}h',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  height.toStringAsFixed(1),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const Text(
+                  'ft',
+                  style: TextStyle(color: Colors.white70, fontSize: 10),
+                ),
+                if (data['wave_period_sec'] != null)
+                  Text(
+                    '${(data['wave_period_sec'] as num).toStringAsFixed(0)}s',
+                    style: const TextStyle(color: Colors.white70, fontSize: 9),
+                  ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }

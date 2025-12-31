@@ -447,9 +447,10 @@ class _InletMapState extends State<InletMap> {
       final color = _getCautionColor(inlet['caution'] as String);
       return Marker(
         point: LatLng(inlet['lat'] as double, inlet['lon'] as double),
-        width: 70,
-        height: 65,
+        width: 80,
+        height: 70,
         child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
           onTap: () => _showInletDetails(inlet),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -465,6 +466,7 @@ class _InletMapState extends State<InletMap> {
                 child: Text(inlet['emoji'] as String, style: const TextStyle(fontSize: 16)),
               ),
               Container(
+                constraints: const BoxConstraints(maxWidth: 76),
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                 decoration: BoxDecoration(
                   color: Colors.white,
@@ -473,6 +475,7 @@ class _InletMapState extends State<InletMap> {
                 child: Text(
                   (inlet['name'] as String).split(' ').first,
                   style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
@@ -574,25 +577,19 @@ class _InletDetailSheetState extends State<_InletDetailSheet> {
   void _loadTides() {
     final inletId = widget.inlet['id'] as String;
     final inletTides = widget.tideData?[inletId];
-    if (inletTides == null) {
-      debugPrint('No tide data for inlet: $inletId');
-      return;
-    }
+    if (inletTides == null) return;
 
     final now = DateTime.now();
     final currentYear = now.year.toString();
-    debugPrint('Loading tides for $inletId, year $currentYear, now: $now');
 
     // Try current year, then next year if near year end
     List<dynamic> yearTides = inletTides['years']?[currentYear]?['tides'] as List<dynamic>? ?? [];
-    debugPrint('Found ${yearTides.length} tides for $currentYear');
 
     // Also include next year's tides if available (for Dec 31 scenarios)
     final nextYear = (now.year + 1).toString();
     final nextYearTides = inletTides['years']?[nextYear]?['tides'] as List<dynamic>? ?? [];
     if (nextYearTides.isNotEmpty) {
       yearTides = [...yearTides, ...nextYearTides];
-      debugPrint('Added ${nextYearTides.length} tides from $nextYear');
     }
 
     final upcoming = <Map<String, dynamic>>[];
@@ -607,10 +604,7 @@ class _InletDetailSheetState extends State<_InletDetailSheet> {
 
       // Parse as local time (replace space with T for ISO format)
       final tideTime = DateTime.tryParse(timeStr.replaceAll(' ', 'T'));
-      if (tideTime == null) {
-        debugPrint('Failed to parse tide time: ${tide['time']}');
-        continue;
-      }
+      if (tideTime == null) continue;
 
       // Compare with current time (both in local)
       if (tideTime.isAfter(now)) {
@@ -620,7 +614,6 @@ class _InletDetailSheetState extends State<_InletDetailSheet> {
           'height_ft': tide['height_ft'],
         };
         upcoming.add(tideInfo);
-        debugPrint('Added tide: ${tide['type']} at $tideTime (${tide['height_ft']} ft)');
 
         if (nextHigh == null && tide['type'] == 'High') nextHigh = tideInfo;
         if (nextLow == null && tide['type'] == 'Low') nextLow = tideInfo;
@@ -628,8 +621,6 @@ class _InletDetailSheetState extends State<_InletDetailSheet> {
         if (upcoming.length >= 6) break;
       }
     }
-
-    debugPrint('Total upcoming tides: ${upcoming.length}');
 
     // Calculate tide phase
     String phase = 'Unknown';
@@ -974,25 +965,32 @@ class _InletDetailSheetState extends State<_InletDetailSheet> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Next 6 Tides (${_upcomingTides.length} found):', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                Text('Next 6 Tides:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.grey[800])),
                 const SizedBox(height: 8),
-                ..._upcomingTides.map((tide) {
-                  // Use same pattern as _buildNextTideCard which works
+                ..._upcomingTides.asMap().entries.map((entry) {
+                  final idx = entry.key;
+                  final tide = entry.value;
                   final tideType = tide['type'] as String? ?? 'N/A';
                   final tideTime = tide['time'] as DateTime?;
                   final heightFt = tide['height_ft'] as num?;
-                  final timeStr = tideTime != null ? _formatDateTime(tideTime) : '??';
+                  final timeStr = tideTime != null ? _formatTideTime(tideTime) : '??';
                   final heightStr = heightFt != null ? '${heightFt.toStringAsFixed(1)} ft' : '??';
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
+                  return Container(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    decoration: BoxDecoration(
+                      border: idx < _upcomingTides.length - 1
+                          ? Border(bottom: BorderSide(color: Colors.grey.shade200))
+                          : null,
+                    ),
                     child: Row(
                       children: [
                         SizedBox(
-                          width: 45,
+                          width: 50,
                           child: Text(
                             tideType,
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
+                              fontSize: 14,
                               color: tideType == 'High' ? Colors.blue : Colors.orange,
                             ),
                           ),
@@ -1000,13 +998,20 @@ class _InletDetailSheetState extends State<_InletDetailSheet> {
                         Expanded(
                           child: Text(
                             timeStr,
-                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[600],
+                            ),
                           ),
                         ),
                         SizedBox(
                           width: 60,
                           child: Text(
                             heightStr,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
                             textAlign: TextAlign.right,
                           ),
                         ),
@@ -1228,9 +1233,24 @@ class _InletDetailSheetState extends State<_InletDetailSheet> {
     return '${hour}:${time.minute.toString().padLeft(2, '0')} $ampm';
   }
 
-  String _formatDateTime(DateTime time) {
-    final month = time.month;
-    final day = time.day;
-    return '$month/$day ${_formatTime(time)}';
+  /// Format tide time like website: "Today 12:30 PM" or "Tomorrow 12:30 PM" or "Dec 31 12:30 PM"
+  String _formatTideTime(DateTime time) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final tomorrow = today.add(const Duration(days: 1));
+    final tideDate = DateTime(time.year, time.month, time.day);
+
+    final timeStr = _formatTime(time);
+
+    if (tideDate == today) {
+      return 'Today $timeStr';
+    } else if (tideDate == tomorrow) {
+      return 'Tomorrow $timeStr';
+    } else {
+      // Format as "Dec 31 12:30 PM"
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      return '${months[time.month - 1]} ${time.day} $timeStr';
+    }
   }
 }
