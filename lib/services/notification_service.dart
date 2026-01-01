@@ -53,6 +53,16 @@ class NotificationService {
     importance: Importance.defaultImportance,
   );
 
+  // Fish On! channel with custom reel drag sound
+  static const AndroidNotificationChannel fishOnChannel = AndroidNotificationChannel(
+    'fish_on_alerts',
+    'Fish On! Alerts',
+    description: 'Urgent alerts when a buddy hooks up - screaming drag sound!',
+    importance: Importance.max,
+    playSound: true,
+    sound: RawResourceAndroidNotificationSound('fish_on'),
+  );
+
   /// Initialize notifications - call from main.dart
   Future<void> initialize() async {
     if (_initialized) return;
@@ -129,6 +139,7 @@ class NotificationService {
       await androidPlugin?.createNotificationChannel(weatherChannel);
       await androidPlugin?.createNotificationChannel(buddyChannel);
       await androidPlugin?.createNotificationChannel(systemChannel);
+      await androidPlugin?.createNotificationChannel(fishOnChannel);
     }
   }
 
@@ -183,6 +194,9 @@ class NotificationService {
       case 'weather_alert':
         // Navigate to cities screen
         break;
+      case 'fish_on':
+        // Navigate to buddies screen with location
+        break;
       case 'buddy_request':
       case 'buddy_accepted':
       case 'buddy_message':
@@ -218,6 +232,11 @@ class NotificationService {
     switch (type) {
       case 'weather_alert':
         channel = weatherChannel;
+        notificationId = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+        break;
+      case 'fish_on':
+        // Special Fish On! alert with screaming drag sound
+        channel = fishOnChannel;
         notificationId = DateTime.now().millisecondsSinceEpoch ~/ 1000;
         break;
       case 'buddy_request':
