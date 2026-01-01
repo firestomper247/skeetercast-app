@@ -83,6 +83,12 @@ class ApiConfig {
   static const String deviceToken = '$authBase/api/device-token';
   static String deleteDeviceToken(String token) => '$authBase/api/device-token/$token';
 
+  // Stripe subscription endpoints
+  static const String stripeConfig = '$authBase/api/stripe/config';
+  static const String stripeCreateCheckout = '$authBase/api/stripe/create-checkout-session';
+  static const String stripeCreatePortal = '$authBase/api/stripe/create-portal-session';
+  static const String stripeSubscriptionStatus = '$authBase/api/stripe/subscription-status';
+
   // User Fishing Spots endpoints
   static const String userSpots = '$authBase/api/spots';
   static String deleteSpot(int spotId) => '$authBase/api/spots/$spotId';

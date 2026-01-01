@@ -126,6 +126,7 @@ class _FishingScreenState extends State<FishingScreen> with SingleTickerProvider
             'depth_ft': spot['depth_ft'],
             'reasons': spot['reasons'],
             'analysis': spot['captain_steve_analysis'],
+            'metadata': spot['metadata'],
           });
         }
       }
@@ -241,7 +242,8 @@ class _FishingScreenState extends State<FishingScreen> with SingleTickerProvider
       final zone = pick['zone']?.toString() ?? 'Unknown';
       final depth = pick['depth_ft'];
       final analysis = pick['analysis']?.toString();
-      final reasons = pick['reasons'] as List<dynamic>?;
+      final reasons = pick['reasons'] as Map<String, dynamic>?;
+      final metadata = pick['metadata'] as Map<String, dynamic>?;
       final lat = (pick['lat'] as num?)?.toDouble() ?? 0.0;
       final lon = (pick['lon'] as num?)?.toDouble() ?? 0.0;
 
@@ -319,61 +321,128 @@ class _FishingScreenState extends State<FishingScreen> with SingleTickerProvider
                   ),
                   const SizedBox(height: 12),
 
-                  // Location & Depth
+                  // Location, Depth, Distance & Run Time
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
                       color: theme.colorScheme.surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: Row(
+                    child: Column(
                       children: [
-                        Expanded(
-                          child: Column(
-                            children: [
-                              const Icon(Icons.location_on, size: 20),
-                              const SizedBox(height: 4),
-                              Text(
-                                '${lat.toStringAsFixed(2)}N\n${lon.abs().toStringAsFixed(2)}W',
-                                textAlign: TextAlign.center,
-                                style: theme.textTheme.bodySmall,
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                children: [
+                                  const Icon(Icons.location_on, size: 20),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '${lat.toStringAsFixed(2)}N\n${lon.abs().toStringAsFixed(2)}W',
+                                    textAlign: TextAlign.center,
+                                    style: theme.textTheme.bodySmall,
+                                  ),
+                                ],
                               ),
-                            ],
-                          ),
-                        ),
-                        if (depth != null)
-                          Expanded(
-                            child: Column(
-                              children: [
-                                const Icon(Icons.straighten, size: 20),
-                                const SizedBox(height: 4),
-                                Text(
-                                  '${depth}ft\nDepth',
-                                  textAlign: TextAlign.center,
-                                  style: theme.textTheme.bodySmall,
+                            ),
+                            if (depth != null)
+                              Expanded(
+                                child: Column(
+                                  children: [
+                                    const Icon(Icons.straighten, size: 20),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '${(depth as num).toStringAsFixed(0)}ft\nDepth',
+                                      textAlign: TextAlign.center,
+                                      style: theme.textTheme.bodySmall,
+                                    ),
+                                  ],
                                 ),
-                              ],
+                              ),
+                            if (metadata?['distance_nm'] != null)
+                              Expanded(
+                                child: Column(
+                                  children: [
+                                    const Icon(Icons.directions_boat, size: 20),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '${(metadata!['distance_nm'] as num).toStringAsFixed(1)} nm\nDistance',
+                                      textAlign: TextAlign.center,
+                                      style: theme.textTheme.bodySmall,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            if (metadata?['run_time_min'] != null)
+                              Expanded(
+                                child: Column(
+                                  children: [
+                                    const Icon(Icons.timer, size: 20),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '${metadata!['run_time_min']} min\nRun Time',
+                                      textAlign: TextAlign.center,
+                                      style: theme.textTheme.bodySmall,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                          ],
+                        ),
+                        if (metadata?['nearest_inlet'] != null) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            'From ${metadata!['nearest_inlet']}',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
                             ),
                           ),
+                        ],
                       ],
                     ),
                   ),
 
-                  // Reasons
-                  if (reasons != null && reasons.isNotEmpty) ...[
+                  // Reasons - structured as positive/neutral/negative
+                  if (reasons != null) ...[
                     const SizedBox(height: 16),
                     Text('Why This Spot:', style: theme.textTheme.titleMedium),
                     const SizedBox(height: 8),
-                    ...reasons.map((r) => Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('• '),
-                          Expanded(child: Text(r.toString())),
-                        ],
-                      ),
-                    )),
+                    // Positive reasons
+                    if (reasons['positive'] != null)
+                      ...((reasons['positive'] as List<dynamic>).map((r) => Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('✅ ', style: TextStyle(fontSize: 12)),
+                            Expanded(child: Text(r.toString())),
+                          ],
+                        ),
+                      ))),
+                    // Neutral reasons
+                    if (reasons['neutral'] != null)
+                      ...((reasons['neutral'] as List<dynamic>).map((r) => Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('➖ ', style: TextStyle(fontSize: 12)),
+                            Expanded(child: Text(r.toString())),
+                          ],
+                        ),
+                      ))),
+                    // Negative reasons
+                    if (reasons['negative'] != null)
+                      ...((reasons['negative'] as List<dynamic>).map((r) => Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('⚠️ ', style: TextStyle(fontSize: 12)),
+                            Expanded(child: Text(r.toString())),
+                          ],
+                        ),
+                      ))),
                   ],
 
                   // Captain Steve's Analysis

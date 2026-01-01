@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import '../services/auth_service.dart';
+import '../services/api_service.dart';
 import '../services/api_config.dart';
 
 class SubscriptionScreen extends StatefulWidget {
@@ -322,36 +323,115 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   }
 
   Future<void> _selectPlan(BuildContext context, String tier) async {
+    final authService = Provider.of<AuthService>(context, listen: false);
+    final apiService = ApiService();
+
+    if (!authService.isLoggedIn) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please log in to subscribe')),
+      );
+      return;
+    }
+
     // Map tier to Stripe price ID
     final priceId = _getPriceId(tier);
     if (priceId == null) return;
 
-    // Open Stripe checkout in WebView
-    final checkoutUrl = '${ApiConfig.mainSite}/subscribe?tier=$tier';
+    // Show loading indicator
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(child: CircularProgressIndicator()),
+    );
 
-    setState(() {
-      _webViewUrl = checkoutUrl;
-      _showWebView = true;
-    });
+    try {
+      // Call API to create Stripe checkout session
+      final response = await apiService.post(
+        ApiConfig.stripeCreateCheckout,
+        data: {'price_id': priceId},
+      );
+
+      if (context.mounted) Navigator.of(context).pop(); // Close loading dialog
+
+      if (response.statusCode == 200) {
+        final data = response.data;
+        if (data['success'] == true && data['url'] != null) {
+          setState(() {
+            _webViewUrl = data['url'];
+            _showWebView = true;
+          });
+        } else {
+          throw Exception(data['message'] ?? 'Failed to create checkout session');
+        }
+      } else {
+        throw Exception(response.data['message'] ?? 'Server error: ${response.statusCode}');
+      }
+    } catch (e) {
+      if (context.mounted) {
+        Navigator.of(context).pop(); // Close loading if still open
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _openBillingPortal(BuildContext context) async {
-    final portalUrl = '${ApiConfig.mainSite}/account/billing';
+    final authService = Provider.of<AuthService>(context, listen: false);
+    final apiService = ApiService();
 
-    setState(() {
-      _webViewUrl = portalUrl;
-      _showWebView = true;
-    });
+    if (!authService.isLoggedIn) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please log in to manage billing')),
+      );
+      return;
+    }
+
+    // Show loading indicator
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      // Call API to create Stripe portal session
+      final response = await apiService.post(ApiConfig.stripeCreatePortal);
+
+      if (context.mounted) Navigator.of(context).pop(); // Close loading dialog
+
+      if (response.statusCode == 200) {
+        final data = response.data;
+        if (data['success'] == true && data['url'] != null) {
+          setState(() {
+            _webViewUrl = data['url'];
+            _showWebView = true;
+          });
+        } else {
+          throw Exception(data['message'] ?? 'Failed to open billing portal');
+        }
+      } else {
+        throw Exception(response.data['message'] ?? 'Server error: ${response.statusCode}');
+      }
+    } catch (e) {
+      if (context.mounted) {
+        Navigator.of(context).pop(); // Close loading if still open
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
   }
 
   String? _getPriceId(String tier) {
+    // Live Stripe price IDs (from server config)
     switch (tier.toLowerCase()) {
       case 'plus':
-        return 'price_1SdQIi4DAW9jMl21XbOB5EyX';
+        return 'price_1Sipzo3hbMcj8TIbm83k19rP';    // $6.99/month
       case 'premium':
-        return 'price_1SdQIi4DAW9jMl21eTiDj9FL';
+        return 'price_1Siq133hbMcj8TIbAKcUD3H9';   // $12.99/month
       case 'pro':
-        return 'price_1SdQIj4DAW9jMl21oWxK77x7';
+        return 'price_1Siq253hbMcj8TIbgBMFSfaa';   // $22.99/month
       default:
         return null;
     }
@@ -363,12 +443,12 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       ..setNavigationDelegate(
         NavigationDelegate(
           onNavigationRequest: (request) {
-            // Handle success/cancel redirects
-            if (request.url.contains('success=true')) {
+            // Handle success/cancel redirects from Stripe checkout
+            if (request.url.contains('payment=success')) {
               Navigator.of(context).pop();
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                  content: Text('Subscription successful!'),
+                  content: Text('Subscription successful! Welcome aboard!'),
                   backgroundColor: Colors.green,
                 ),
               );
@@ -377,11 +457,14 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                   .fetchUserProfile();
               return NavigationDecision.prevent;
             }
-            if (request.url.contains('canceled=true')) {
+            if (request.url.contains('payment=cancelled')) {
               setState(() {
                 _showWebView = false;
                 _webViewUrl = null;
               });
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Checkout cancelled')),
+              );
               return NavigationDecision.prevent;
             }
             return NavigationDecision.navigate;
