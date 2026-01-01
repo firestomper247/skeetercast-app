@@ -595,29 +595,17 @@ class _CitiesScreenState extends State<CitiesScreen> with SingleTickerProviderSt
     final humidity = obs?['humidity_pct'] != null
         ? (obs!['humidity_pct'] as num).round()
         : (current?['humidity_pct'] as num?)?.round();
-    // Use observation wind data if available, otherwise use hourly
+    // Use hourly forecast wind data (more reliable than stale observations)
     String windSpeed;
     String windDir;
-    if (obs?['wind_speed_mph'] != null) {
-      final speed = (obs!['wind_speed_mph'] as num).round();
-      if (speed == 0) {
-        windSpeed = 'Calm';
-        windDir = '';
-      } else {
-        windSpeed = '$speed mph';
-        final deg = obs['wind_direction'] as num?;
-        windDir = deg != null ? _degreesToCardinal(deg.toDouble()) : '';
-      }
+    final hourlyWind = current?['wind_speed'] ?? 'N/A';
+    // Check if hourly says calm or 0
+    if (hourlyWind == '0 mph' || hourlyWind.toString().toLowerCase().contains('calm')) {
+      windSpeed = 'Calm';
+      windDir = '';
     } else {
-      final hourlyWind = current?['wind_speed'] ?? 'N/A';
-      // Check if hourly says calm or 0
-      if (hourlyWind == '0 mph' || hourlyWind.toString().toLowerCase().contains('calm')) {
-        windSpeed = 'Calm';
-        windDir = '';
-      } else {
-        windSpeed = hourlyWind;
-        windDir = current?['wind_direction'] ?? '';
-      }
+      windSpeed = hourlyWind.toString();
+      windDir = current?['wind_direction'] ?? '';
     }
     final observationTime = obs?['observation_time'] as String?;
     final stationName = obs?['station_name'] as String?;
